@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Saa Kenya Admin</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🛠️</text></svg>" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/style.css" />
+  <link rel="stylesheet" href="css/admin.css" />
+</head>
+<body class="admin-body">
+
+  <!-- ============ LOGIN ============ -->
+  <div class="login-wrap" id="loginView">
+    <form class="login-card" id="loginForm">
+      <div class="login-logo">🛠️</div>
+      <h1>Saa Kenya Admin</h1>
+      <p class="sub">Sign in to manage the store</p>
+      <div class="field">
+        <label for="adminPassword">Admin password</label>
+        <input type="password" id="adminPassword" name="password" required autofocus placeholder="Enter password" />
+      </div>
+      <button type="submit" class="btn btn-primary btn-block" id="loginBtn">Sign In</button>
+      <p class="login-error" id="loginError" hidden></p>
+      <a href="index.html" class="back-link">← Back to store</a>
+    </form>
+  </div>
+
+  <!-- ============ DASHBOARD ============ -->
+  <div class="admin-app" id="adminView" hidden>
+    <header class="admin-topbar">
+      <div class="container admin-topbar-inner">
+        <a href="index.html" class="brand">
+          <span class="brand-icon">⌚</span>
+          <span class="brand-name">Saa<span>Kenya</span> <em class="admin-tag">Admin</em></span>
+        </a>
+        <nav class="admin-nav">
+          <button class="tab-btn active" data-tab="dashboard">Dashboard</button>
+          <button class="tab-btn" data-tab="products">Products</button>
+          <button class="tab-btn" data-tab="orders">Orders</button>
+        </nav>
+        <button class="btn btn-ghost btn-sm" id="logoutBtn">Log out</button>
+      </div>
+    </header>
+
+    <main class="container admin-main">
+      <!-- Dashboard tab -->
+      <section class="tab-panel" id="panel-dashboard">
+        <div class="stats-grid" id="statsGrid">
+          <div class="stat-card"><span class="stat-icon">📦</span><div><div class="stat-label">Products</div><div class="stat-value" id="statProducts">–</div></div></div>
+          <div class="stat-card"><span class="stat-icon">🧾</span><div><div class="stat-label">Total orders</div><div class="stat-value" id="statOrders">–</div></div></div>
+          <div class="stat-card"><span class="stat-icon">⏳</span><div><div class="stat-label">Pending</div><div class="stat-value" id="statPending">–</div></div></div>
+          <div class="stat-card"><span class="stat-icon">💰</span><div><div class="stat-label">Revenue (excl. cancelled)</div><div class="stat-value" id="statRevenue">–</div></div></div>
+          <div class="stat-card"><span class="stat-icon">⚠️</span><div><div class="stat-label">Low stock (≤5)</div><div class="stat-value" id="statLowStock">–</div></div></div>
+        </div>
+        <div class="card-info quick-links">
+          <h3>Quick actions</h3>
+          <div class="quick-actions">
+            <button class="btn btn-primary" data-goto="products">Manage products</button>
+            <button class="btn btn-ghost" data-goto="orders">View orders</button>
+            <a href="index.html" class="btn btn-ghost">Open storefront</a>
+          </div>
+        </div>
+      </section>
+
+      <!-- Products tab -->
+      <section class="tab-panel" id="panel-products" hidden>
+        <div class="panel-head">
+          <h2>Products</h2>
+          <button class="btn btn-primary" id="newProductBtn">+ Add product</button>
+        </div>
+        <div class="search-box">
+          <input type="search" id="adminSearch" placeholder="Search products..." aria-label="Search products" />
+        </div>
+        <div class="table-wrap">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Product</th>
+                <th>Category</th>
+                <th>Price</th>
+                <th>Stock</th>
+                <th>Featured</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="adminProductRows">
+              <tr><td colspan="7" class="loading-row">Loading...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- Orders tab -->
+      <section class="tab-panel" id="panel-orders" hidden>
+        <div class="panel-head">
+          <h2>Orders</h2>
+        </div>
+        <div class="table-wrap">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Ref</th>
+                <th>Customer</th>
+                <th>Location</th>
+                <th>Total</th>
+                <th>Status</th>
+                <th>Date</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="adminOrderRows">
+              <tr><td colspan="7" class="loading-row">Loading...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- ============ PRODUCT MODAL ============ -->
+  <div class="modal-overlay" id="productModal" hidden>
+    <div class="modal">
+      <div class="modal-head">
+        <h3 id="productModalTitle">Add product</h3>
+        <button class="icon-btn" id="closeProductModal">✕</button>
+      </div>
+      <form id="productForm" novalidate>
+        <input type="hidden" id="p_id" />
+        <div class="form-grid">
+          <div class="field full">
+            <label for="p_name">Name *</label>
+            <input type="text" id="p_name" required maxlength="120" placeholder="e.g. Tempo Classic Leather Watch" />
+          </div>
+          <div class="field full">
+            <label for="p_description">Description *</label>
+            <textarea id="p_description" required rows="3" placeholder="Short description..."></textarea>
+          </div>
+          <div class="field">
+            <label for="p_price">Price (KSh) *</label>
+            <input type="number" id="p_price" required min="500" max="5000" step="50" placeholder="500 – 5000" />
+          </div>
+          <div class="field">
+            <label for="p_category">Category</label>
+            <select id="p_category">
+              <option>Men</option>
+              <option>Women</option>
+              <option>Kids</option>
+              <option>Smart</option>
+              <option>Unisex</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="p_stock">Stock</label>
+            <input type="number" id="p_stock" min="0" step="1" value="0" />
+          </div>
+          <div class="field">
+            <label for="p_featured">Featured</label>
+            <select id="p_featured">
+              <option value="0">No</option>
+              <option value="1">Yes</option>
+            </select>
+          </div>
+          <div class="field full">
+            <label for="p_image_url">Image URL (optional)</label>
+            <input type="text" id="p_image_url" placeholder="https://... (placeholder image used if empty)" />
+          </div>
+        </div>
+        <button type="submit" class="btn btn-primary btn-block" id="saveProductBtn">Save product</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- ============ ORDER DETAIL MODAL ============ -->
+  <div class="modal-overlay" id="orderModal" hidden>
+    <div class="modal">
+      <div class="modal-head">
+        <h3>Order <span id="orderRef"></span></h3>
+        <button class="icon-btn" id="closeOrderModal">✕</button>
+      </div>
+      <div id="orderDetailBody"></div>
+    </div>
+  </div>
+
+  <!-- ============ TOAST ============ -->
+  <div class="toast" id="toast" hidden></div>
+
+  <script src="js/admin.js"></script>
+</body>
+</html>
