@@ -169,6 +169,17 @@
             <label for="p_image_url">Image URL (optional)</label>
             <input type="text" id="p_image_url" placeholder="https://... (placeholder image used if empty)" />
           </div>
+          <div class="field full">
+            <label>Upload a photo (optional)</label>
+            <div class="img-upload">
+              <img id="p_image_preview" alt="Product image preview" />
+              <div class="img-upload-controls">
+                <input type="file" id="p_image_file" accept="image/jpeg,image/png,image/webp,image/gif" />
+                <p class="hint">JPG, PNG, WebP or GIF up to 4MB. An uploaded photo replaces the Image URL above.</p>
+                <button type="button" class="btn btn-ghost btn-sm" id="p_image_remove" hidden>Remove image</button>
+              </div>
+            </div>
+          </div>
         </div>
         <button type="submit" class="btn btn-primary btn-block" id="saveProductBtn">Save product</button>
       </form>

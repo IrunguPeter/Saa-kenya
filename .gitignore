@@ -1,0 +1,4 @@
+node_modules/
+.env
+aiven-credentials.md
+*.log

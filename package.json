@@ -2,7 +2,7 @@
   "name": "saa-kenya",
   "version": "1.0.0",
   "description": "Saa Kenya - Affordable watch store (KSh 500 - KSh 5,000) with MariaDB backend and admin portal",
-  "main": "server.js",
+  "main": "app.js",
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js",
@@ -10,9 +10,13 @@
   },
   "keywords": ["watches", "kenya", "ecommerce", "mariadb"],
   "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  },
   "dependencies": {
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
+    "multer": "^2.0.1",
     "mysql2": "^3.11.0"
   }
 }

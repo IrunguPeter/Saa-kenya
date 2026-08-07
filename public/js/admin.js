@@ -29,6 +29,10 @@
     return { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token() };
   }
 
+  function formAuthHeaders() {
+    return { Authorization: 'Bearer ' + token() };
+  }
+
   function formatKSh(n) {
     return 'KSh ' + Number(n).toLocaleString('en-KE', { maximumFractionDigits: 0 });
   }
@@ -49,6 +53,10 @@
   function productImage(p) {
     return p.image_url ||
       '/img/placeholder/' + p.id + '.svg?name=' + encodeURIComponent(p.name);
+  }
+
+  function placeholderSrc(id) {
+    return '/img/placeholder/' + (id || 1) + '.svg?name=' + encodeURIComponent('Saa Kenya Watch');
   }
 
   function toastMsg(msg) {
@@ -241,8 +249,61 @@
     $('p_stock').value = product ? product.stock : 0;
     $('p_featured').value = product ? (product.featured ? 1 : 0) : 0;
     $('p_image_url').value = product ? product.image_url || '' : '';
+    $('p_image_file').value = '';
+    $('p_image_preview').src = product && product.image_url
+      ? product.image_url
+      : placeholderSrc(product ? product.id : 1);
+    $('p_image_remove').hidden = !(product && product.image_url);
     $('productModal').hidden = false;
     setTimeout(() => $('p_name').focus(), 50);
+  }
+
+  $('p_image_file').addEventListener('change', () => {
+    const file = $('p_image_file').files[0];
+    if (!file) return;
+    if (!/^image\/(jpeg|png|webp|gif)$/.test(file.type)) {
+      toastMsg('Only JPG, PNG, WebP or GIF images are allowed.');
+      $('p_image_file').value = '';
+      return;
+    }
+    if (file.size > 4 * 1024 * 1024) {
+      toastMsg('Image is too large. Maximum size is 4MB.');
+      $('p_image_file').value = '';
+      return;
+    }
+    $('p_image_preview').src = URL.createObjectURL(file);
+    $('p_image_remove').hidden = false;
+  });
+
+  $('p_image_remove').addEventListener('click', async () => {
+    const id = Number($('p_id').value);
+    if (!id) {
+      toastMsg('Save the product first, then you can remove its image.');
+      return;
+    }
+    try {
+      await api('/api/admin/products/' + id + '/image', {
+        method: 'DELETE',
+        headers: formAuthHeaders(),
+      });
+      $('p_image_url').value = '';
+      $('p_image_file').value = '';
+      $('p_image_preview').src = placeholderSrc(id);
+      $('p_image_remove').hidden = true;
+      toastMsg('Image removed.');
+    } catch (err) {
+      toastMsg(err.message);
+    }
+  });
+
+  async function uploadProductImage(id, file) {
+    const fd = new FormData();
+    fd.append('image', file);
+    return api('/api/admin/products/' + id + '/image', {
+      method: 'POST',
+      headers: formAuthHeaders(),
+      body: fd,
+    });
   }
 
   $('productForm').addEventListener('submit', async (e) => {
@@ -271,24 +332,33 @@
     btn.disabled = true;
     btn.textContent = 'Saving...';
     try {
-      if (id) {
-        await api('/api/admin/products/' + id, {
+      let productId = id ? Number(id) : null;
+      if (productId) {
+        await api('/api/admin/products/' + productId, {
           method: 'PUT',
           headers: authHeaders(),
           body: JSON.stringify(body),
         });
-        toastMsg('Product updated.');
       } else {
-        await api('/api/admin/products', {
+        const created = await api('/api/admin/products', {
           method: 'POST',
           headers: authHeaders(),
           body: JSON.stringify(body),
         });
-        toastMsg('Product added.');
+        productId = created.id;
+      }
+      const file = $('p_image_file').files[0];
+      if (file && productId) {
+        try {
+          await uploadProductImage(productId, file);
+        } catch (uploadErr) {
+          toastMsg('Product saved, but image upload failed: ' + uploadErr.message);
+        }
       }
       $('productModal').hidden = true;
       $('productForm').reset();
       await Promise.all([loadProducts(), loadStats()]);
+      toastMsg(id ? 'Product updated.' : 'Product added.');
     } catch (err) {
       toastMsg(err.message);
     } finally {

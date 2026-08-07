@@ -161,6 +161,26 @@
 
 .order-notes { background: #f9fafb; border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; font-size: 0.88rem; color: var(--muted); margin-top: 14px; }
 
+/* ---------------- Image upload ---------------- */
+
+.img-upload { display: flex; gap: 16px; align-items: flex-start; }
+
+.img-upload img {
+  width: 120px; height: 80px; object-fit: cover; border-radius: 10px;
+  border: 1.5px solid var(--border); background: #f0ede4; flex-shrink: 0;
+}
+
+.img-upload-controls { display: flex; flex-direction: column; gap: 8px; flex: 1; }
+
+.img-upload-controls input[type="file"] { font-size: 0.85rem; }
+
+.img-upload .hint { font-size: 0.78rem; color: var(--muted); margin: 0; }
+
+@media (max-width: 520px) {
+  .img-upload { flex-direction: column; }
+  .img-upload img { width: 100%; height: auto; aspect-ratio: 3 / 2; }
+}
+
 /* ---------------- Empty states ---------------- */
 
 .empty-row td { text-align: center; color: var(--muted); padding: 30px 16px; }

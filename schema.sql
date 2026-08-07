@@ -59,6 +59,22 @@ CREATE TABLE IF NOT EXISTS orders (
 );
 
 -- ------------------------------------------------------------
+-- Product images (uploaded photos stored as blobs so they work
+-- on any host, including serverless / Vercel)
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS product_images (
+  id          INT AUTO_INCREMENT PRIMARY KEY,
+  product_id  INT NOT NULL,
+  data        LONGBLOB NOT NULL,
+  content_type VARCHAR(80) NOT NULL,
+  created_at  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_product_image (product_id),
+  CONSTRAINT fk_image_product
+    FOREIGN KEY (product_id) REFERENCES products(id)
+    ON DELETE CASCADE
+);
+
+-- ------------------------------------------------------------
 -- Order items (snapshot of product so history survives edits)
 -- ------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS order_items (
