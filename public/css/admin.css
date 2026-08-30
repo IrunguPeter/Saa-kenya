@@ -185,6 +185,32 @@
 
 .empty-row td { text-align: center; color: var(--muted); padding: 30px 16px; }
 
+/* ---------------- Settings panel ---------------- */
+
+#panel-settings { display: flex; flex-direction: column; align-items: center; }
+
+#panel-settings .panel-head { width: 100%; max-width: 600px; }
+
+#panel-settings .card {
+  width: 100%; max-width: 600px;
+  background: var(--surface); border-radius: var(--radius); box-shadow: var(--shadow);
+  padding: 28px;
+}
+
+#panel-settings h3 { font-size: 1.2rem; font-weight: 700; margin-bottom: 8px; }
+
+.hint-text { color: var(--muted); font-size: 0.9rem; margin-bottom: 16px; }
+
+.password-hints { background: #f9fafb; border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; margin: 16px 0; }
+
+.password-hints ul { list-style: none; padding: 0; margin: 8px 0 0; }
+
+.password-hints li { font-size: 0.9rem; color: var(--muted); padding: 4px 0; }
+
+.password-hints li:before { content: "✓ "; color: #10b981; font-weight: 600; }
+
+.form-actions { display: flex; gap: 12px; margin-top: 20px; }
+
 /* ---------------- Responsive ---------------- */
 
 @media (max-width: 760px) {
