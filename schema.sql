@@ -10,6 +10,14 @@ CREATE DATABASE IF NOT EXISTS watch_store
 
 USE watch_store;
 
+-- Admin credentials (stored separately for secure password management)
+CREATE TABLE IF NOT EXISTS admin_credentials (
+  id           INT AUTO_INCREMENT PRIMARY KEY,
+  username     VARCHAR(50) NOT NULL DEFAULT 'admin' UNIQUE,
+  password_hash VARCHAR(255) NOT NULL,
+  updated_at   TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
 -- ------------------------------------------------------------
 -- Products (watches priced KSh 500 - 5,000)
 -- ------------------------------------------------------------

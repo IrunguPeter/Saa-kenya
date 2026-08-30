@@ -4,6 +4,7 @@ const express = require('express');
 const crypto = require('crypto');
 const path = require('path');
 const multer = require('multer');
+const bcrypt = require('bcrypt');
 const db = require('./db');
 
 const app = express();
@@ -13,26 +14,92 @@ app.use(express.static(path.join(__dirname, 'public')));
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin123';
 const TOKEN_TTL_MS = 1000 * 60 * 60 * 12; // 12 hours
 
+// ============ Password Management ============
+
+const BCRYPT_ROUNDS = 10;
+const PASSWORD_MIN_LENGTH = 8;
+
+function validatePasswordStrength(password) {
+  if (!password || password.length < PASSWORD_MIN_LENGTH) {
+    return { valid: false, error: 'Password must be at least 8 characters.' };
+  }
+  if (!/[a-z]/.test(password)) {
+    return { valid: false, error: 'Password must contain lowercase letters.' };
+  }
+  if (!/[A-Z]/.test(password)) {
+    return { valid: false, error: 'Password must contain uppercase letters.' };
+  }
+  if (!/[0-9]/.test(password)) {
+    return { valid: false, error: 'Password must contain numbers.' };
+  }
+  return { valid: true };
+}
+
+async function hashPassword(password) {
+  return bcrypt.hash(password, BCRYPT_ROUNDS);
+}
+
+async function verifyPassword(password, hash) {
+  return bcrypt.compare(password, hash);
+}
+
+async function getAdminPassword() {
+  try {
+    const [rows] = await db.query(
+      'SELECT password_hash FROM admin_credentials WHERE username = ?',
+      ['admin']
+    );
+    if (rows.length > 0) {
+      return rows[0].password_hash;
+    }
+  } catch (err) {
+    console.error('Error fetching admin password from DB:', err.message);
+  }
+  return null;
+}
+
+async function initializeAdminIfNeeded() {
+  try {
+    const [rows] = await db.query(
+      'SELECT id FROM admin_credentials WHERE username = ?',
+      ['admin']
+    );
+    if (rows.length === 0) {
+      const hash = await hashPassword(ADMIN_PASSWORD);
+      await db.query(
+        'INSERT INTO admin_credentials (username, password_hash) VALUES (?, ?)',
+        ['admin', hash]
+      );
+      console.log('Initialized admin credentials from ADMIN_PASSWORD env var.');
+    }
+  } catch (err) {
+    console.error('Error initializing admin credentials:', err.message);
+  }
+}
+
+// Initialize admin credentials on startup
+initializeAdminIfNeeded().catch(err => console.error('Startup error:', err));
+
 const CATEGORIES = ['Men', 'Women', 'Kids', 'Smart', 'Unisex'];
 
 // ---------------- Auth helpers ----------------
 
-function makeToken() {
+function makeToken(password) {
   const payload = String(Date.now());
   const sig = crypto
-    .createHmac('sha256', ADMIN_PASSWORD)
+    .createHmac('sha256', password)
     .update(payload)
     .digest('hex');
   return `${payload}.${sig}`;
 }
 
-function verifyToken(token) {
+function verifyToken(token, password) {
   if (typeof token !== 'string' || !token.includes('.')) return false;
   const [payload, sig] = token.split('.');
   const issuedAt = parseInt(payload, 10);
   if (Number.isNaN(issuedAt) || Date.now() - issuedAt > TOKEN_TTL_MS) return false;
   const expected = crypto
-    .createHmac('sha256', ADMIN_PASSWORD)
+    .createHmac('sha256', password)
     .update(payload)
     .digest('hex');
   const a = Buffer.from(sig);
@@ -42,10 +109,25 @@ function verifyToken(token) {
 
 function requireAdmin(req, res, next) {
   const token = (req.headers.authorization || '').replace(/^Bearer\s+/i, '');
-  if (!verifyToken(token)) {
-    return res.status(401).json({ error: 'Unauthorised. Please log in.' });
-  }
-  next();
+  
+  (async () => {
+    try {
+      // Try to get password from database first
+      let password = await getAdminPassword();
+      if (!password) {
+        password = ADMIN_PASSWORD;
+      }
+      
+      if (!verifyToken(token, password)) {
+        return res.status(401).json({ error: 'Unauthorised. Please log in.' });
+      }
+      req._adminPassword = password;
+      next();
+    } catch (err) {
+      console.error('Auth middleware error:', err);
+      res.status(401).json({ error: 'Unauthorised. Please log in.' });
+    }
+  })();
 }
 
 // ---------------- Middleware helpers ----------------
@@ -293,13 +375,92 @@ app.post(
 
 // ---------------- Admin: auth ----------------
 
-app.post('/api/admin/login', (req, res) => {
+app.post('/api/admin/login', asyncWrap(async (req, res) => {
   const { password } = req.body || {};
-  if (!password || password !== ADMIN_PASSWORD) {
-    return res.status(401).json({ error: 'Incorrect admin password.' });
+  if (!password) {
+    return res.status(401).json({ error: 'Password is required.' });
   }
-  res.json({ token: makeToken(), expiresIn: TOKEN_TTL_MS });
-});
+
+  try {
+    // Try database password first
+    const dbPasswordHash = await getAdminPassword();
+    if (dbPasswordHash && (await verifyPassword(password, dbPasswordHash))) {
+      const token = makeToken(password);
+      req._adminPassword = password;
+      return res.json({ token, expiresIn: TOKEN_TTL_MS });
+    }
+
+    // Fall back to env var password for backward compatibility
+    if (password === ADMIN_PASSWORD) {
+      const token = makeToken(ADMIN_PASSWORD);
+      req._adminPassword = ADMIN_PASSWORD;
+      return res.json({ token, expiresIn: TOKEN_TTL_MS });
+    }
+
+    res.status(401).json({ error: 'Incorrect admin password.' });
+  } catch (err) {
+    console.error('Login error:', err);
+    res.status(401).json({ error: 'Incorrect admin password.' });
+  }
+}));
+
+app.post(
+  '/api/admin/change-password',
+  requireAdmin,
+  asyncWrap(async (req, res) => {
+    const { current_password, new_password, confirm_password } = req.body || {};
+
+    if (!current_password || !new_password) {
+      return res
+        .status(400)
+        .json({ error: 'Current password and new password are required.' });
+    }
+
+    if (new_password !== confirm_password) {
+      return res.status(400).json({ error: 'New passwords do not match.' });
+    }
+
+    const strength = validatePasswordStrength(new_password);
+    if (!strength.valid) {
+      return res.status(400).json({ error: strength.error });
+    }
+
+    try {
+      // Verify current password
+      const currentPasswordHash = await getAdminPassword();
+      let isValid = false;
+
+      if (currentPasswordHash) {
+        isValid = await verifyPassword(current_password, currentPasswordHash);
+      } else {
+        isValid = current_password === ADMIN_PASSWORD;
+      }
+
+      if (!isValid) {
+        return res.status(401).json({ error: 'Current password is incorrect.' });
+      }
+
+      // Prevent using the same password
+      if (new_password === current_password) {
+        return res
+          .status(400)
+          .json({ error: 'New password must be different from current password.' });
+      }
+
+      // Hash and store new password
+      const newPasswordHash = await hashPassword(new_password);
+      await db.query(
+        'INSERT INTO admin_credentials (username, password_hash) VALUES (?, ?) ON DUPLICATE KEY UPDATE password_hash = ?',
+        ['admin', newPasswordHash, newPasswordHash]
+      );
+
+      res.json({ message: 'Password changed successfully. Please sign in again.' });
+    } catch (err) {
+      console.error('Change password error:', err);
+      res.status(500).json({ error: 'Failed to change password.' });
+    }
+  })
+);
 
 // ---------------- Admin: stats ----------------
 

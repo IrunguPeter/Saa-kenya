@@ -41,6 +41,7 @@
           <button class="tab-btn active" data-tab="dashboard">Dashboard</button>
           <button class="tab-btn" data-tab="products">Products</button>
           <button class="tab-btn" data-tab="orders">Orders</button>
+          <button class="tab-btn" data-tab="settings">Settings</button>
         </nav>
         <button class="btn btn-ghost btn-sm" id="logoutBtn">Log out</button>
       </div>
@@ -121,6 +122,47 @@
       </section>
     </main>
   </div>
+
+  <!-- ============ SETTINGS TAB ============ -->
+  <section class="tab-panel" id="panel-settings" hidden>
+    <div class="panel-head">
+      <h2>Settings</h2>
+    </div>
+    <div class="card">
+      <h3>Change Admin Password</h3>
+      <p class="hint-text">Update your admin password to keep your account secure.</p>
+      <form id="passwordForm" novalidate>
+       <div class="form-grid">
+         <div class="field full">
+           <label for="pw_current">Current password *</label>
+           <input type="password" id="pw_current" required placeholder="Enter current password" />
+         </div>
+         <div class="field full">
+           <label for="pw_new">New password *</label>
+           <input type="password" id="pw_new" required placeholder="At least 8 chars with letters, numbers, and uppercase" />
+         </div>
+         <div class="field full">
+           <label for="pw_confirm">Confirm new password *</label>
+           <input type="password" id="pw_confirm" required placeholder="Re-enter new password" />
+         </div>
+       </div>
+       <div class="password-hints">
+         <p class="hint-text">Password requirements:</p>
+         <ul>
+           <li>At least 8 characters</li>
+           <li>Must contain uppercase letters (A-Z)</li>
+           <li>Must contain lowercase letters (a-z)</li>
+           <li>Must contain numbers (0-9)</li>
+         </ul>
+       </div>
+       <div class="form-actions">
+         <button type="submit" class="btn btn-primary" id="savePasswordBtn">Change Password</button>
+         <button type="reset" class="btn btn-ghost">Cancel</button>
+       </div>
+       <p class="password-error" id="passwordError" hidden style="color: var(--error); margin-top: 1rem;"></p>
+      </form>
+    </div>
+  </section>
 
   <!-- ============ PRODUCT MODAL ============ -->
   <div class="modal-overlay" id="productModal" hidden>

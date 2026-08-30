@@ -127,6 +127,59 @@
     showLogin();
   });
 
+  // ---------------- Password Change ----------------
+
+  $('passwordForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const errEl = $('passwordError');
+    errEl.hidden = true;
+
+    const current = $('pw_current').value;
+    const newPw = $('pw_new').value;
+    const confirm = $('pw_confirm').value;
+
+    if (!current || !newPw || !confirm) {
+      errEl.textContent = 'All fields are required.';
+      errEl.hidden = false;
+      return;
+    }
+
+    if (newPw !== confirm) {
+      errEl.textContent = 'New passwords do not match.';
+      errEl.hidden = false;
+      return;
+    }
+
+    const btn = $('savePasswordBtn');
+    btn.disabled = true;
+    btn.textContent = 'Changing...';
+
+    try {
+      await api('/api/admin/change-password', {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify({
+          current_password: current,
+          new_password: newPw,
+          confirm_password: confirm,
+        }),
+      });
+
+      toastMsg('Password changed successfully. Signing out...');
+      setToken('');
+      setTimeout(() => {
+        showLogin();
+        $('passwordForm').reset();
+      }, 1500);
+    } catch (err) {
+      errEl.textContent = err.message;
+      errEl.hidden = false;
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Change Password';
+    }
+  });
+
   // ---------------- Tabs ----------------
 
   document.querySelectorAll('.tab-btn').forEach((btn) => {
