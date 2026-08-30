@@ -142,7 +142,7 @@ function getPriceRange() {
 
 // ---------------- Product image upload ----------------
 
-const MAX_IMAGE_BYTES = 4 * 1024 * 1024; // 4 MB (fits Vercel's body limit)
+const MAX_IMAGE_BYTES = 10 * 1024 * 1024; // 10 MB
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -645,7 +645,7 @@ app.use((err, req, res, next) => {
   if (err instanceof multer.MulterError) {
     const msg =
       err.code === 'LIMIT_FILE_SIZE'
-        ? 'Image is too large. Maximum size is 4MB.'
+        ? 'Image is too large. Maximum size is 10MB.'
         : 'Could not process the uploaded image.';
     return res.status(400).json({ error: msg });
   }

@@ -10,9 +10,12 @@
 
   const CATEGORIES = ['Men', 'Women', 'Kids', 'Smart', 'Unisex'];
   const STATUSES = ['pending', 'confirmed', 'shipped', 'delivered', 'cancelled'];
+  const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
+  const MAX_IMAGE_DIM = 2000;
 
   let products = [];
   let orders = [];
+  let pendingImageFile = null;
 
   // ---------------- Utilities ----------------
 
@@ -303,6 +306,7 @@
     $('p_featured').value = product ? (product.featured ? 1 : 0) : 0;
     $('p_image_url').value = product ? product.image_url || '' : '';
     $('p_image_file').value = '';
+    pendingImageFile = null;
     $('p_image_preview').src = product && product.image_url
       ? product.image_url
       : placeholderSrc(product ? product.id : 1);
@@ -311,21 +315,75 @@
     setTimeout(() => $('p_name').focus(), 50);
   }
 
-  $('p_image_file').addEventListener('change', () => {
+  function loadImage(file) {
+    return new Promise((resolve, reject) => {
+      const url = URL.createObjectURL(file);
+      const img = new Image();
+      img.onload = () => { URL.revokeObjectURL(url); resolve(img); };
+      img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Could not read the selected image.')); };
+      img.src = url;
+    });
+  }
+
+  function compressImage(img, file, maxDim) {
+    return new Promise((resolve, reject) => {
+      const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+      const w = Math.max(1, Math.round(img.width * scale));
+      const h = Math.max(1, Math.round(img.height * scale));
+      const canvas = document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, w, h);
+      const ext = file.name.replace(/\.\w+$/, '').toLowerCase() + '.jpg';
+      const encode = (type, q) => canvas.toBlob(
+        (blob) => {
+          if (!blob || blob.size <= MAX_IMAGE_BYTES || q <= 0.4) {
+            if (!blob) {
+              reject(new Error('Could not compress the image.'));
+              return;
+            }
+            resolve(new File([blob], ext, { type: blob.type }));
+          } else {
+            encode(type, q - 0.1);
+          }
+        },
+        type,
+        q
+      );
+      encode('image/jpeg', 0.85);
+    });
+  }
+
+  $('p_image_file').addEventListener('change', async () => {
     const file = $('p_image_file').files[0];
+    pendingImageFile = null;
     if (!file) return;
     if (!/^image\/(jpeg|png|webp|gif)$/.test(file.type)) {
       toastMsg('Only JPG, PNG, WebP or GIF images are allowed.');
       $('p_image_file').value = '';
       return;
     }
-    if (file.size > 4 * 1024 * 1024) {
-      toastMsg('Image is too large. Maximum size is 4MB.');
+    try {
+      const img = await loadImage(file);
+      const needsResize = Math.max(img.width, img.height) > MAX_IMAGE_DIM;
+      if (file.type === 'image/gif' && (file.size > MAX_IMAGE_BYTES || needsResize)) {
+        toastMsg('GIFs cannot be compressed. Please choose one under 10MB.');
+        $('p_image_file').value = '';
+        return;
+      }
+      if (file.size <= MAX_IMAGE_BYTES && !needsResize) {
+        pendingImageFile = file;
+      } else {
+        pendingImageFile = await compressImage(img, file, MAX_IMAGE_DIM);
+        toastMsg('Image compressed to fit within the 10MB limit.');
+      }
+      $('p_image_preview').src = URL.createObjectURL(pendingImageFile);
+      $('p_image_remove').hidden = false;
+    } catch (err) {
+      toastMsg(err.message);
       $('p_image_file').value = '';
-      return;
     }
-    $('p_image_preview').src = URL.createObjectURL(file);
-    $('p_image_remove').hidden = false;
   });
 
   $('p_image_remove').addEventListener('click', async () => {
@@ -341,6 +399,7 @@
       });
       $('p_image_url').value = '';
       $('p_image_file').value = '';
+      pendingImageFile = null;
       $('p_image_preview').src = placeholderSrc(id);
       $('p_image_remove').hidden = true;
       toastMsg('Image removed.');
@@ -400,7 +459,7 @@
         });
         productId = created.id;
       }
-      const file = $('p_image_file').files[0];
+      const file = pendingImageFile;
       if (file && productId) {
         try {
           await uploadProductImage(productId, file);

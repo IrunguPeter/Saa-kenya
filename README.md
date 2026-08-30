@@ -134,7 +134,7 @@ The app is serverless-optimized with connection pooling and stateless authentica
 - Tokens expire after 12 hours
 - Database passwords are never exposed in logs or responses
 - SQL injection protected via parameterized queries
-- File uploads validated by type and size (4MB limit)
+- File uploads validated by type and size (10MB maximum)
 
 ## License
 
