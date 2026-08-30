@@ -389,17 +389,21 @@ app.post('/api/admin/login', asyncWrap(async (req, res) => {
   try {
     // Try database password first
     const dbPasswordHash = await getAdminPassword();
+
+    // Token HMAC key must be identical to what requireAdmin() uses when
+    // verifying (the stored hash). Signing with the raw password breaks
+    // auth as soon as a hash is present in the database.
+    const signingKey = dbPasswordHash || ADMIN_PASSWORD;
+
     if (dbPasswordHash && (await verifyPassword(password, dbPasswordHash))) {
-      const token = makeToken(password);
-      req._adminPassword = password;
-      return res.json({ token, expiresIn: TOKEN_TTL_MS });
+      req._adminPassword = signingKey;
+      return res.json({ token: makeToken(signingKey), expiresIn: TOKEN_TTL_MS });
     }
 
     // Fall back to env var password for backward compatibility
     if (password === ADMIN_PASSWORD) {
-      const token = makeToken(ADMIN_PASSWORD);
-      req._adminPassword = ADMIN_PASSWORD;
-      return res.json({ token, expiresIn: TOKEN_TTL_MS });
+      req._adminPassword = signingKey;
+      return res.json({ token: makeToken(signingKey), expiresIn: TOKEN_TTL_MS });
     }
 
     res.status(401).json({ error: 'Incorrect admin password.' });
