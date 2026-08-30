@@ -169,8 +169,8 @@ const PRODUCT_IMAGES_SQL = `
     product_id  INT NOT NULL,
     data        BYTEA NOT NULL,
     content_type VARCHAR(80) NOT NULL,
+    sort_order  INT NOT NULL DEFAULT 0,
     created_at  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE (product_id),
     CONSTRAINT fk_image_product
       FOREIGN KEY (product_id) REFERENCES products(id)
       ON DELETE CASCADE
@@ -211,12 +211,33 @@ app.get('/img/placeholder/:id.svg', (req, res) => {
 
 // ---------------- Public: product image ----------------
 
+// Serve a specific product image (by image id).
+app.get(
+  '/img/product/:pid/:iid',
+  asyncWrap(async (req, res) => {
+    const pid = Number(req.params.pid);
+    const iid = Number(req.params.iid);
+    const [rows] = await db.query(
+      'SELECT data, content_type FROM product_images WHERE id = ? AND product_id = ?',
+      [iid, pid]
+    );
+    if (rows.length === 0) {
+      return res.status(404).json({ error: 'Image not found.' });
+    }
+    res
+      .type(rows[0].content_type)
+      .set('Cache-Control', 'public, max-age=86400')
+      .send(rows[0].data);
+  })
+);
+
+// Serve the first (cover) image for a product.
 app.get(
   '/img/product/:id',
   asyncWrap(async (req, res) => {
     const id = Number(req.params.id);
     const [rows] = await db.query(
-      'SELECT data, content_type FROM product_images WHERE product_id = ?',
+      'SELECT data, content_type FROM product_images WHERE product_id = ? ORDER BY sort_order ASC, id ASC LIMIT 1',
       [id]
     );
     if (rows.length === 0) {
@@ -231,6 +252,7 @@ app.get(
 
 // ---------------- Public: products ----------------
 
+// Get products + images
 app.get(
   '/api/products',
   asyncWrap(async (req, res) => {
@@ -254,7 +276,28 @@ app.get(
       ' ORDER BY featured DESC, id ASC';
 
     const [rows] = await db.query(sql, params);
-    res.json({ products: rows, min, max });
+
+    // Attach the ordered list of images for each product so the storefront
+    // can render a swipeable carousel.
+    const [images] = await db.query(
+      `SELECT product_id, id, sort_order FROM product_images
+       ORDER BY product_id ASC, sort_order ASC, id ASC`
+    );
+    const byProduct = new Map();
+    for (const img of images) {
+      if (!byProduct.has(img.product_id)) byProduct.set(img.product_id, []);
+      byProduct.get(img.product_id).push({
+        id: img.id,
+        url: `/img/product/${img.product_id}/${img.id}`,
+      });
+    }
+
+    const products = rows.map((p) => ({
+      ...p,
+      images: byProduct.get(p.id) || [],
+    }));
+
+    res.json({ products, min, max });
   })
 );
 
@@ -562,16 +605,37 @@ app.delete(
   })
 );
 
-// ---------------- Admin: product image upload / delete ----------------
+// ---------------- Admin: product images ----------------
+
+async function refreshCoverImage(productId) {
+  const [rows] = await db.query(
+    'SELECT id FROM product_images WHERE product_id = ? ORDER BY sort_order ASC, id ASC LIMIT 1',
+    [productId]
+  );
+  if (rows.length > 0) {
+    await db.query('UPDATE products SET image_url = ? WHERE id = ?', [`/img/product/${productId}`, productId]);
+  } else {
+    await db.query('UPDATE products SET image_url = NULL WHERE id = ?', [productId]);
+  }
+}
+
+async function listProductImages(productId) {
+  const [rows] = await db.query(
+    'SELECT id, product_id, content_type, sort_order, created_at FROM product_images WHERE product_id = ? ORDER BY sort_order ASC, id ASC',
+    [productId]
+  );
+  return rows.map((r) => ({ ...r, image_url: `/img/product/${productId}/${r.id}` }));
+}
 
 app.post(
   '/api/admin/products/:id/image',
   requireAdmin,
-  upload.single('image'),
+  upload.array('images', 10),
   asyncWrap(async (req, res) => {
     const id = Number(req.params.id);
-    if (!req.file) {
-      return res.status(400).json({ error: 'No image file provided.' });
+    const files = req.files || [];
+    if (files.length === 0) {
+      return res.status(400).json({ error: 'No image files provided.' });
     }
     const [rows] = await db.query('SELECT id FROM products WHERE id = ?', [id]);
     if (rows.length === 0) {
@@ -579,16 +643,88 @@ app.post(
     }
 
     await db.query(PRODUCT_IMAGES_SQL);
-    await db.query(
-      `INSERT INTO product_images (product_id, data, content_type) VALUES (?, ?, ?)
-       ON CONFLICT (product_id) DO UPDATE SET data = EXCLUDED.data, content_type = EXCLUDED.content_type`,
-      [id, req.file.buffer, req.file.mimetype]
+    
+    // Auto-migrate on upload just in case
+    await db.query(`ALTER TABLE product_images DROP CONSTRAINT IF EXISTS product_images_product_id_key;`);
+    await db.query(`ALTER TABLE product_images ADD COLUMN IF NOT EXISTS sort_order INT NOT NULL DEFAULT 0;`);
+
+    const { rows: nextPos } = await db.query(
+      'SELECT COALESCE(MAX(sort_order), -1) + 1 AS n FROM product_images WHERE product_id = ?',
+      [id]
     );
-    await db.query('UPDATE products SET image_url = ? WHERE id = ?', [`/img/product/${id}`, id]);
-    res.status(201).json({ image_url: `/img/product/${id}` });
+    let pos = Number(nextPos[0].n) || 0;
+
+    for (const file of files) {
+      await db.query(
+        'INSERT INTO product_images (product_id, data, content_type, sort_order) VALUES (?, ?, ?, ?)',
+        [id, file.buffer, file.mimetype, pos]
+      );
+      pos += 1;
+    }
+
+    await refreshCoverImage(id);
+    const images = await listProductImages(id);
+    res.status(201).json({ images });
   })
 );
 
+app.get(
+  '/api/admin/products/:id/images',
+  requireAdmin,
+  asyncWrap(async (req, res) => {
+    const id = Number(req.params.id);
+    const images = await listProductImages(id);
+    res.json({ images });
+  })
+);
+
+app.delete(
+  '/api/admin/products/:id/images/:iid',
+  requireAdmin,
+  asyncWrap(async (req, res) => {
+    const id = Number(req.params.id);
+    const iid = Number(req.params.iid);
+    await db.query(PRODUCT_IMAGES_SQL);
+    const [result] = await db.query(
+      'DELETE FROM product_images WHERE id = ? AND product_id = ?',
+      [iid, id]
+    );
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ error: 'Image not found.' });
+    }
+    await refreshCoverImage(id);
+    res.json({ ok: true });
+  })
+);
+
+app.put(
+  '/api/admin/products/:id/images/reorder',
+  requireAdmin,
+  asyncWrap(async (req, res) => {
+    const id = Number(req.params.id);
+    const { order } = req.body;
+    if (!Array.isArray(order)) {
+      return res.status(400).json({ error: 'Invalid order data.' });
+    }
+    const conn = await db.getConnection();
+    try {
+      await conn.beginTransaction();
+      for (let i = 0; i < order.length; i++) {
+        await conn.query('UPDATE product_images SET sort_order = ? WHERE id = ? AND product_id = ?', [i, Number(order[i]), id]);
+      }
+      await conn.commit();
+    } catch (err) {
+      await conn.rollback();
+      throw err;
+    } finally {
+      conn.release();
+    }
+    await refreshCoverImage(id);
+    res.json({ ok: true });
+  })
+);
+
+// Backward-compat delete-all images.
 app.delete(
   '/api/admin/products/:id/image',
   requireAdmin,
@@ -596,7 +732,7 @@ app.delete(
     const id = Number(req.params.id);
     await db.query(PRODUCT_IMAGES_SQL);
     await db.query('DELETE FROM product_images WHERE product_id = ?', [id]);
-    await db.query('UPDATE products SET image_url = NULL WHERE id = ?', [id]);
+    await refreshCoverImage(id);
     res.json({ ok: true });
   })
 );

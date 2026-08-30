@@ -68,8 +68,8 @@ CREATE TABLE IF NOT EXISTS product_images (
   product_id   INT NOT NULL,
   data         BYTEA NOT NULL,
   content_type VARCHAR(80) NOT NULL,
+  sort_order   INT NOT NULL DEFAULT 0,
   created_at   TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  UNIQUE (product_id),
   CONSTRAINT fk_image_product
     FOREIGN KEY (product_id) REFERENCES products(id)
     ON DELETE CASCADE
@@ -121,3 +121,9 @@ INSERT INTO products (name, description, price, category, stock, featured) VALUE
 ('Titan Ultra Smartwatch', '1.83 inch HD display, sleep tracking and 7-day battery life.', 4600.00, 'Smart', 12, 0),
 ('Everyday Casual Watch', 'Comfortable resin strap analog watch for daily use. Comes in 4 colours.', 850.00, 'Unisex', 28, 0),
 ('Classic Twin Watch Set', 'Matching couple watch set - his and hers. Great gift idea.', 2950.00, 'Unisex', 6, 0);
+
+-- ------------------------------------------------------------
+-- Migrations
+-- ------------------------------------------------------------
+ALTER TABLE product_images DROP CONSTRAINT IF EXISTS product_images_product_id_key;
+ALTER TABLE product_images ADD COLUMN IF NOT EXISTS sort_order INT NOT NULL DEFAULT 0;

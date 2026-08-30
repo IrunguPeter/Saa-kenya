@@ -15,7 +15,8 @@
 
   let products = [];
   let orders = [];
-  let pendingImageFile = null;
+  let existingImages = []; // [ {id, url} ] already uploaded for the product being edited
+  let pendingImageFiles = []; // [ File ] newly selected, not yet uploaded
 
   // ---------------- Utilities ----------------
 
@@ -287,7 +288,6 @@
     }
   }
 
-  let productSearchTimer;
   $('adminSearch').addEventListener('input', () => {
     clearTimeout(productSearchTimer);
     productSearchTimer = setTimeout(() => renderProducts($('adminSearch').value), 200);
@@ -295,7 +295,7 @@
 
   $('newProductBtn').addEventListener('click', () => openProductForm());
 
-  function openProductForm(product) {
+  async function openProductForm(product) {
     $('productModalTitle').textContent = product ? 'Edit product' : 'Add product';
     $('p_id').value = product ? product.id : '';
     $('p_name').value = product ? product.name : '';
@@ -305,14 +305,163 @@
     $('p_stock').value = product ? product.stock : 0;
     $('p_featured').value = product ? (product.featured ? 1 : 0) : 0;
     $('p_image_url').value = product ? product.image_url || '' : '';
-    $('p_image_file').value = '';
-    pendingImageFile = null;
-    $('p_image_preview').src = product && product.image_url
-      ? product.image_url
-      : placeholderSrc(product ? product.id : 1);
-    $('p_image_remove').hidden = !(product && product.image_url);
+    $('p_image_files').value = '';
+    pendingImageFiles = [];
+    existingImages = [];
+
+    if (product) {
+      try {
+        const data = await api('/api/admin/products/' + product.id + '/images', {
+          headers: authHeaders(),
+        });
+        existingImages = (data.images || []).slice();
+      } catch (err) {
+        console.error('Failed to load images', err);
+      }
+    }
+
+    renderGallery();
     $('productModal').hidden = false;
     setTimeout(() => $('p_name').focus(), 50);
+  }
+
+  // Render the gallery: existing uploaded images (each with a remove button)
+  // followed by previews of newly selected (pending) images.
+  // Existing images can be re-ordered by dragging.
+  function renderGallery() {
+    const gallery = $('img_gallery');
+    gallery.innerHTML = '';
+
+    existingImages.forEach((img) => {
+      const item = document.createElement('div');
+      item.className = 'gallery-item';
+      item.draggable = true;
+      item.dataset.iid = img.id;
+      item.innerHTML = `
+        <img src="${escapeHtml(img.image_url)}" alt="Product image" />
+        <span class="gallery-tag">photo</span>
+        <button type="button" class="icon-btn gallery-del" data-iid="${img.id}" title="Remove">&times;</button>
+      `;
+      gallery.appendChild(item);
+    });
+
+    pendingImageFiles.forEach((file, idx) => {
+      const item = document.createElement('div');
+      item.className = 'gallery-item pending';
+      item.innerHTML = `
+        <img src="${URL.createObjectURL(file)}" alt="New image" />
+        <span class="gallery-tag">new</span>
+        <button type="button" class="icon-btn gallery-del" data-idx="${idx}" title="Remove">&times;</button>
+      `;
+      gallery.appendChild(item);
+    });
+
+    if (existingImages.length === 0 && pendingImageFiles.length === 0) {
+      const hint = document.createElement('p');
+      hint.className = 'hint';
+      hint.textContent = 'No photos yet. Choose a photo below to add one (or several).';
+      gallery.appendChild(hint);
+      return;
+    }
+    if (existingImages.length > 1) {
+      const hint = document.createElement('p');
+      hint.className = 'hint';
+      hint.textContent = 'The first photo is shown as the cover. Drag photos to reorder them.';
+      gallery.appendChild(hint);
+    }
+
+    wireGalleryDrag(gallery);
+    wireGalleryDelete(gallery);
+  }
+
+  function wireGalleryDelete(gallery) {
+    gallery.querySelectorAll('.gallery-del').forEach((btn) => {
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const iid = btn.dataset.iid;
+        if (iid) {
+          await deleteProductImage(Number(iid));
+        } else {
+          pendingImageFiles.splice(Number(btn.dataset.idx), 1);
+          renderGallery();
+        }
+      });
+    });
+  }
+
+  // HTML5 drag-and-drop reordering of existing (uploaded) images.
+  function wireGalleryDrag(gallery) {
+    const items = Array.from(gallery.querySelectorAll('.gallery-item[data-iid]'));
+    if (items.length < 2) return;
+
+    let dragged = null;
+
+    items.forEach((item) => {
+      item.addEventListener('dragstart', (e) => {
+        dragged = item;
+        item.classList.add('dragging');
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', item.dataset.iid);
+      });
+
+      item.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        if (!dragged || item === dragged) return;
+        const rect = item.getBoundingClientRect();
+        const before = e.clientX < rect.left + rect.width / 2;
+        if (before) {
+          gallery.insertBefore(dragged, item);
+        } else {
+          gallery.insertBefore(dragged, item.nextSibling);
+        }
+      });
+
+      item.addEventListener('dragend', () => {
+        item.classList.remove('dragging');
+        if (dragged) dragged.classList.remove('dragging');
+        dragged = null;
+        saveImageOrder();
+      });
+    });
+  }
+
+  // Persist the current on-screen order of existing images to the backend.
+  async function saveImageOrder() {
+    const id = Number($('p_id').value);
+    const order = Array.from($('img_gallery').querySelectorAll('.gallery-item[data-iid]')).map(
+      (el) => Number(el.dataset.iid)
+    );
+    if (!id || order.length === 0) return;
+    try {
+      await api('/api/admin/products/' + id + '/images/reorder', {
+        method: 'PUT',
+        headers: authHeaders(),
+        body: JSON.stringify({ order }),
+      });
+    } catch (err) {
+      toastMsg('Could not save image order: ' + err.message);
+    }
+  }
+
+  async function deleteProductImage(iid) {
+    const id = Number($('p_id').value);
+    if (!id) {
+      toastMsg('Save the product first, then you can remove its photos.');
+      return;
+    }
+    try {
+      await api('/api/admin/products/' + id + '/images/' + iid, {
+        method: 'DELETE',
+        headers: authHeaders(),
+      });
+      existingImages = existingImages.filter((x) => x.id !== iid);
+      renderGallery();
+      toastMsg('Photo removed.');
+      await loadProducts();
+    } catch (err) {
+      toastMsg(err.message);
+    }
   }
 
   function loadImage(file) {
@@ -355,62 +504,43 @@
     });
   }
 
-  $('p_image_file').addEventListener('change', async () => {
-    const file = $('p_image_file').files[0];
-    pendingImageFile = null;
-    if (!file) return;
-    if (!/^image\/(jpeg|png|webp|gif)$/.test(file.type)) {
-      toastMsg('Only JPG, PNG, WebP or GIF images are allowed.');
-      $('p_image_file').value = '';
-      return;
+  $('p_image_files').addEventListener('change', async () => {
+    const files = Array.from($('p_image_files').files).slice(0, 10);
+    pendingImageFiles = [];
+    renderGallery();
+
+    for (const file of files) {
+      if (!/^image\/(jpeg|png|webp|gif)$/.test(file.type)) {
+        toastMsg('Skipped ' + file.name + ' - unsupported format.');
+        continue;
+      }
+      try {
+        const img = await loadImage(file);
+        const needsResize = Math.max(img.width, img.height) > MAX_IMAGE_DIM;
+        if (file.type === 'image/gif' && (file.size > MAX_IMAGE_BYTES || needsResize)) {
+          toastMsg('Skipped ' + file.name + ' - GIF too large.');
+          continue;
+        }
+        if (file.size <= MAX_IMAGE_BYTES && !needsResize) {
+          pendingImageFiles.push(file);
+        } else {
+          const compressed = await compressImage(img, file, MAX_IMAGE_DIM);
+          pendingImageFiles.push(compressed);
+        }
+      } catch (err) {
+        toastMsg('Error processing ' + file.name + ': ' + err.message);
+      }
     }
-    try {
-      const img = await loadImage(file);
-      const needsResize = Math.max(img.width, img.height) > MAX_IMAGE_DIM;
-      if (file.type === 'image/gif' && (file.size > MAX_IMAGE_BYTES || needsResize)) {
-        toastMsg('GIFs cannot be compressed. Please choose one under 10MB.');
-        $('p_image_file').value = '';
-        return;
-      }
-      if (file.size <= MAX_IMAGE_BYTES && !needsResize) {
-        pendingImageFile = file;
-      } else {
-        pendingImageFile = await compressImage(img, file, MAX_IMAGE_DIM);
-        toastMsg('Image compressed to fit within the 10MB limit.');
-      }
-      $('p_image_preview').src = URL.createObjectURL(pendingImageFile);
-      $('p_image_remove').hidden = false;
-    } catch (err) {
-      toastMsg(err.message);
-      $('p_image_file').value = '';
+    
+    renderGallery();
+    if (pendingImageFiles.length > 0) {
+      toastMsg(pendingImageFiles.length + ' image(s) ready to upload on save.');
     }
   });
 
-  $('p_image_remove').addEventListener('click', async () => {
-    const id = Number($('p_id').value);
-    if (!id) {
-      toastMsg('Save the product first, then you can remove its image.');
-      return;
-    }
-    try {
-      await api('/api/admin/products/' + id + '/image', {
-        method: 'DELETE',
-        headers: formAuthHeaders(),
-      });
-      $('p_image_url').value = '';
-      $('p_image_file').value = '';
-      pendingImageFile = null;
-      $('p_image_preview').src = placeholderSrc(id);
-      $('p_image_remove').hidden = true;
-      toastMsg('Image removed.');
-    } catch (err) {
-      toastMsg(err.message);
-    }
-  });
-
-  async function uploadProductImage(id, file) {
+  async function uploadProductImages(id, files) {
     const fd = new FormData();
-    fd.append('image', file);
+    files.forEach(f => fd.append('images', f));
     return api('/api/admin/products/' + id + '/image', {
       method: 'POST',
       headers: formAuthHeaders(),
@@ -459,10 +589,10 @@
         });
         productId = created.id;
       }
-      const file = pendingImageFile;
-      if (file && productId) {
+      
+      if (pendingImageFiles.length > 0 && productId) {
         try {
-          await uploadProductImage(productId, file);
+          await uploadProductImages(productId, pendingImageFiles);
         } catch (uploadErr) {
           toastMsg('Product saved, but image upload failed: ' + uploadErr.message);
         }

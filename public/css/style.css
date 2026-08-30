@@ -182,6 +182,33 @@ img { max-width: 100%; display: block; }
 
 .product-img { width: 100%; aspect-ratio: 3 / 2; object-fit: cover; background: #f0ede4; }
 
+/* ---- Swipeable image carousel on product cards ---- */
+.img-carousel { position: relative; overflow: hidden; background: #f0ede4; }
+.carousel-track { display: flex; transition: transform 0.3s ease; }
+.carousel-track .product-img { flex: 0 0 100%; width: 100%; }
+
+.car-btn {
+  position: absolute; top: 50%; transform: translateY(-50%); z-index: 2;
+  width: 30px; height: 30px; border: none; border-radius: 50%;
+  background: rgba(255, 255, 255, 0.85); color: #222; font-size: 1.1rem;
+  line-height: 1; cursor: pointer; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+  display: flex; align-items: center; justify-content: center;
+}
+.car-btn.prev { left: 8px; }
+.car-btn.next { right: 8px; }
+.car-btn:hover { background: #fff; }
+@media (pointer: coarse) { .car-btn { display: none; } }
+
+.car-dots {
+  position: absolute; left: 0; right: 0; bottom: 8px; z-index: 2;
+  display: flex; justify-content: center; gap: 6px;
+}
+.car-dots span {
+  width: 7px; height: 7px; border-radius: 50%; background: rgba(255, 255, 255, 0.7);
+  cursor: pointer; transition: background 0.2s;
+}
+.car-dots span.active { background: var(--brand); }
+
 .product-body { padding: 16px 18px 18px; display: flex; flex-direction: column; gap: 8px; flex: 1; }
 
 .product-cat { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--accent); font-weight: 600; }

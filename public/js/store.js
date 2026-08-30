@@ -73,6 +73,13 @@
     );
   }
 
+  // Ordered list of image URLs for a product (used by the swipeable carousel).
+  // Falls back to a single image (image_url or placeholder) when no photos exist.
+  function productSlides(p) {
+    if (p.images && p.images.length) return p.images.map((img) => img.url);
+    return [productImage(p)];
+  }
+
   function stockClass(stock) {
     if (stock <= 0) return 'stock-out';
     if (stock <= 5) return 'stock-low';
@@ -229,7 +236,25 @@
         (p) => `
       <article class="product-card">
         ${p.featured ? '<span class="badge-flag">Featured</span>' : ''}
-        <img class="product-img" src="${productImage(p)}" alt="${p.name.replace(/"/g, '&quot;')}" loading="lazy" />
+        ${
+          (() => {
+            const slides = productSlides(p);
+            const safeAlt = p.name.replace(/"/g, '&quot;');
+            const imgs = slides
+              .map((s) => `<img class="product-img" src="${s}" alt="${safeAlt}" loading="lazy" />`)
+              .join('');
+            const multi = slides.length > 1;
+            const controls = multi
+              ? `<button type="button" class="car-btn prev" aria-label="Previous image">&#8249;</button>
+                 <button type="button" class="car-btn next" aria-label="Next image">&#8250;</button>
+                 <div class="car-dots">${slides.map((s, i) => `<span data-i="${i}"></span>`).join('')}</div>`
+              : '';
+            return `<div class="img-carousel"${multi ? ' data-carousel="1"' : ''}>
+              <div class="carousel-track">${imgs}</div>
+              ${controls}
+            </div>`;
+          })()
+        }
         <div class="product-body">
           <span class="product-cat">${p.category}</span>
           <h3 class="product-name">${p.name}</h3>
@@ -245,6 +270,52 @@
       </article>`
       )
       .join('');
+    initCarousels();
+  }
+
+  // Wire up carousel controls + touch swipe for product image galleries.
+  function initCarousels() {
+    productGrid.querySelectorAll('.img-carousel[data-carousel]').forEach((carousel) => {
+      if (carousel.dataset.bound) return;
+      carousel.dataset.bound = '1';
+      const track = carousel.querySelector('.carousel-track');
+      const slides = Array.from(carousel.querySelectorAll('.carousel-track > img'));
+      const dots = Array.from(carousel.querySelectorAll('.car-dots span'));
+      const total = slides.length;
+      let index = 0;
+
+      const goTo = (i) => {
+        index = (i + total) % total;
+        track.style.transform = 'translateX(' + -index * 100 + '%)';
+        dots.forEach((d, di) => d.classList.toggle('active', di === index));
+      };
+
+      const next = () => goTo(index + 1);
+      const prev = () => goTo(index - 1);
+
+      const prevBtn = carousel.querySelector('.car-btn.prev');
+      const nextBtn = carousel.querySelector('.car-btn.next');
+      if (prevBtn) prevBtn.addEventListener('click', (e) => { e.stopPropagation(); prev(); });
+      if (nextBtn) nextBtn.addEventListener('click', (e) => { e.stopPropagation(); next(); });
+
+      dots.forEach((d) =>
+        d.addEventListener('click', (e) => { e.stopPropagation(); goTo(Number(d.dataset.i)); })
+      );
+
+      // Touch swipe
+      let x0 = null;
+      carousel.addEventListener('touchstart', (e) => {
+        x0 = e.touches[0].clientX;
+      }, { passive: true });
+      carousel.addEventListener('touchend', (e) => {
+        if (x0 == null) return;
+        const dx = e.changedTouches[0].clientX - x0;
+        if (Math.abs(dx) > 40) dx < 0 ? next() : prev();
+        x0 = null;
+      }, { passive: true });
+
+      goTo(0);
+    });
   }
 
   async function loadProducts() {

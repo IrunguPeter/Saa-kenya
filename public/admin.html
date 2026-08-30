@@ -208,18 +208,15 @@
             </select>
           </div>
           <div class="field full">
-            <label for="p_image_url">Image URL (optional)</label>
-            <input type="text" id="p_image_url" placeholder="https://... (placeholder image used if empty)" />
+            <label for="p_image_url">Main image URL (optional)</label>
+            <input type="text" id="p_image_url" placeholder="https://... (used when no photos are uploaded)" />
           </div>
           <div class="field full">
-            <label>Upload a photo (optional)</label>
-            <div class="img-upload">
-              <img id="p_image_preview" alt="Product image preview" />
-              <div class="img-upload-controls">
-                <input type="file" id="p_image_file" accept="image/jpeg,image/png,image/webp,image/gif" />
-                <p class="hint">JPG, PNG, WebP or GIF up to 10MB. An uploaded photo replaces the Image URL above.</p>
-                <button type="button" class="btn btn-ghost btn-sm" id="p_image_remove" hidden>Remove image</button>
-              </div>
+            <label>Watch photos (multiple)</label>
+            <div class="img-gallery" id="img_gallery"></div>
+            <div class="img-upload-controls">
+              <input type="file" id="p_image_files" accept="image/jpeg,image/png,image/webp,image/gif" multiple />
+              <p class="hint">Select one or more JPG/PNG/WebP/GIF photos (up to 10MB each). On the store, customers swipe to cycle through them on mobile.</p>
             </div>
           </div>
         </div>
