@@ -176,6 +176,8 @@
 
 .img-upload .hint { font-size: 0.78rem; color: var(--muted); margin: 0; }
 
+#saveProductBtn { margin-top: 32px; }
+
 @media (max-width: 520px) {
   .img-upload { flex-direction: column; }
   .img-upload img { width: 100%; height: auto; aspect-ratio: 3 / 2; }
