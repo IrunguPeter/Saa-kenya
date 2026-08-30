@@ -4,7 +4,7 @@ const express = require('express');
 const crypto = require('crypto');
 const path = require('path');
 const multer = require('multer');
-const bcrypt = require('bcrypt');
+const bcrypt = require('bcryptjs');
 const db = require('./db');
 
 const app = express();
@@ -35,12 +35,16 @@ function validatePasswordStrength(password) {
   return { valid: true };
 }
 
-async function hashPassword(password) {
-  return bcrypt.hash(password, BCRYPT_ROUNDS);
+function hashPassword(password) {
+  return new Promise((resolve, reject) => {
+    bcrypt.hash(password, BCRYPT_ROUNDS, (err, hash) => (err ? reject(err) : resolve(hash)));
+  });
 }
 
-async function verifyPassword(password, hash) {
-  return bcrypt.compare(password, hash);
+function verifyPassword(password, hash) {
+  return new Promise((resolve, reject) => {
+    bcrypt.compare(password, hash, (err, ok) => (err ? reject(err) : resolve(ok)));
+  });
 }
 
 async function getAdminPassword() {
@@ -161,12 +165,12 @@ const upload = multer({
 // Idempotent — also lets an existing install self-create the table on first upload.
 const PRODUCT_IMAGES_SQL = `
   CREATE TABLE IF NOT EXISTS product_images (
-    id          INT AUTO_INCREMENT PRIMARY KEY,
+    id          SERIAL PRIMARY KEY,
     product_id  INT NOT NULL,
-    data        LONGBLOB NOT NULL,
+    data        BYTEA NOT NULL,
     content_type VARCHAR(80) NOT NULL,
     created_at  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE KEY uq_product_image (product_id),
+    UNIQUE (product_id),
     CONSTRAINT fk_image_product
       FOREIGN KEY (product_id) REFERENCES products(id)
       ON DELETE CASCADE
@@ -332,21 +336,22 @@ app.post(
 
       const [custRes] = await conn.query(
         `INSERT INTO customers (full_name, phone, email, county, town, estate, landmark, notes)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+         RETURNING id`,
         [full_name, phone, email || null, county, town, estate, landmark || null, notes || null]
       );
-      const customerId = custRes.insertId;
+      const customerId = custRes[0].id;
 
       const ref = `SAA-${String(Date.now()).slice(-6)}${customerId}`;
       const [orderRes] = await conn.query(
-        'INSERT INTO orders (ref, customer_id, total, delivery_fee, status) VALUES (?, ?, ?, ?, ?)',
+        'INSERT INTO orders (ref, customer_id, total, delivery_fee, status) VALUES (?, ?, ?, ?, ?) RETURNING id',
         [ref, customerId, total, deliveryFee, 'pending']
       );
 
       for (const line of lines) {
         await conn.query(
           'INSERT INTO order_items (order_id, product_id, product_name, price, quantity) VALUES (?, ?, ?, ?, ?)',
-          [orderRes.insertId, line.product_id, line.product_name, line.price, line.quantity]
+          [orderRes[0].id, line.product_id, line.product_name, line.price, line.quantity]
         );
         await conn.query('UPDATE products SET stock = stock - ? WHERE id = ?', [
           line.quantity,
@@ -450,8 +455,8 @@ app.post(
       // Hash and store new password
       const newPasswordHash = await hashPassword(new_password);
       await db.query(
-        'INSERT INTO admin_credentials (username, password_hash) VALUES (?, ?) ON DUPLICATE KEY UPDATE password_hash = ?',
-        ['admin', newPasswordHash, newPasswordHash]
+        'INSERT INTO admin_credentials (username, password_hash) VALUES (?, ?) ON CONFLICT (username) DO UPDATE SET password_hash = EXCLUDED.password_hash',
+        ['admin', newPasswordHash]
       );
 
       res.json({ message: 'Password changed successfully. Please sign in again.' });
@@ -505,10 +510,11 @@ app.post(
     const cat = CATEGORIES.includes(category) ? category : 'Men';
     const [res2] = await db.query(
       `INSERT INTO products (name, description, price, category, image_url, stock, featured)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?)
+       RETURNING id`,
       [name.trim(), description.trim(), p, cat, image_url || null, parseInt(stock, 10) || 0, featured ? 1 : 0]
     );
-    res.status(201).json({ id: res2.insertId });
+    res.status(201).json({ id: res2[0].id });
   })
 );
 
@@ -571,8 +577,8 @@ app.post(
     await db.query(PRODUCT_IMAGES_SQL);
     await db.query(
       `INSERT INTO product_images (product_id, data, content_type) VALUES (?, ?, ?)
-       ON DUPLICATE KEY UPDATE data = ?, content_type = ?`,
-      [id, req.file.buffer, req.file.mimetype, req.file.buffer, req.file.mimetype]
+       ON CONFLICT (product_id) DO UPDATE SET data = EXCLUDED.data, content_type = EXCLUDED.content_type`,
+      [id, req.file.buffer, req.file.mimetype]
     );
     await db.query('UPDATE products SET image_url = ? WHERE id = ?', [`/img/product/${id}`, id]);
     res.status(201).json({ image_url: `/img/product/${id}` });

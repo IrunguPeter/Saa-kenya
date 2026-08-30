@@ -44,7 +44,7 @@ Admins can securely change their password through the admin portal:
 ## Tech Stack
 
 - **Backend:** Node.js + Express
-- **Database:** MariaDB (MySQL compatible)
+- **Database:** PostgreSQL (Supabase)
 - **Frontend:** Vanilla JS + CSS
 - **Security:** bcrypt password hashing, HMAC-SHA256 tokens
 - **Hosting:** Vercel (with serverless-friendly connection pooling)
@@ -53,7 +53,7 @@ Admins can securely change their password through the admin portal:
 
 ### Prerequisites
 - Node.js 18+
-- MariaDB or MySQL
+- PostgreSQL (free tier: Supabase)
 - npm
 
 ### Installation
@@ -69,24 +69,19 @@ Admins can securely change their password through the admin portal:
    npm install
    ```
 
-3. **Configure environment variables:**
+3. **Create the Supabase database:**
+   - Create a free project at [supabase.com](https://supabase.com)
+   - Open **SQL Editor**, paste the contents of `schema.sql`, and run it
+   - Copy your connection string from **Project Settings → Database → Connection pooling** (Transaction pooler URL, port 6543)
+
+4. **Configure environment variables:**
    ```bash
    cp .env.example .env
    ```
-   Edit `.env` and set your database connection details:
+   Edit `.env` and set your database connection:
    ```
-   DB_HOST=127.0.0.1
-   DB_PORT=3306
-   DB_USER=watch_user
-   DB_PASSWORD=watch_pass
-   DB_NAME=watch_store
+   DATABASE_URL=postgresql://postgres.yourref:password@aws-0-region.pooler.supabase.com:6543/postgres?ssl=true
    ADMIN_PASSWORD=YourSecurePassword123
-   ```
-
-4. **Initialize the database:**
-   ```bash
-   npm run setup-db
-   # Or manually: mysql -u root -p < schema.sql
    ```
 
 5. **Start the server:**
@@ -118,11 +113,15 @@ Admins can securely change their password through the admin portal:
 
 ## Deployment
 
-### Vercel (Recommended)
+### Vercel
 
 1. Push to GitHub
 2. Connect repository to Vercel
-3. Set environment variables in Vercel dashboard
+3. Set the environment variable in Vercel dashboard:
+   ```
+   DATABASE_URL=<your Supabase transaction pooler connection string with ?ssl=true>
+   ADMIN_PASSWORD=YourSecurePassword123
+   ```
 4. Deploy
 
 The app is serverless-optimized with connection pooling and stateless authentication.

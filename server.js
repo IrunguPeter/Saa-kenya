@@ -7,13 +7,11 @@ const PORT = Number(process.env.PORT) || 3000;
 
 async function start() {
   try {
-    const conn = await db.getConnection();
-    await conn.ping();
-    conn.release();
-    console.log('Connected to MariaDB.');
+    await db.query('SELECT 1');
+    console.log('Connected to PostgreSQL.');
   } catch (err) {
-    console.error('\n[ERROR] Could not connect to MariaDB:', err.message);
-    console.error('Check DB settings in .env and make sure MariaDB is running.\n');
+    console.error('\n[ERROR] Could not connect to PostgreSQL:', err.message);
+    console.error('Check DATABASE_URL in .env and make sure the database is reachable.\n');
     process.exit(1);
   }
 

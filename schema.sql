@@ -1,35 +1,28 @@
 -- ============================================================
---  Saa Kenya - MariaDB schema
---  Run:  mysql -u root -p < schema.sql
---  Or use the provided setup.sh script.
+--  Saa Kenya - PostgreSQL schema (Supabase)
+--  Paste this into the Supabase SQL Editor and run it once.
 -- ============================================================
-
-CREATE DATABASE IF NOT EXISTS watch_store
-  CHARACTER SET utf8mb4
-  COLLATE utf8mb4_unicode_ci;
-
-USE watch_store;
 
 -- Admin credentials (stored separately for secure password management)
 CREATE TABLE IF NOT EXISTS admin_credentials (
-  id           INT AUTO_INCREMENT PRIMARY KEY,
-  username     VARCHAR(50) NOT NULL DEFAULT 'admin' UNIQUE,
+  id            SERIAL PRIMARY KEY,
+  username      VARCHAR(50) NOT NULL DEFAULT 'admin' UNIQUE,
   password_hash VARCHAR(255) NOT NULL,
-  updated_at   TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+  updated_at    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 -- ------------------------------------------------------------
 -- Products (watches priced KSh 500 - 5,000)
 -- ------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS products (
-  id          INT AUTO_INCREMENT PRIMARY KEY,
+  id          SERIAL PRIMARY KEY,
   name        VARCHAR(120)   NOT NULL,
   description TEXT           NOT NULL,
-  price       DECIMAL(10,2)  NOT NULL,
+  price       NUMERIC(10,2)  NOT NULL,
   category    VARCHAR(50)    NOT NULL DEFAULT 'Men',
   image_url   VARCHAR(500)   DEFAULT NULL,
   stock       INT            NOT NULL DEFAULT 0,
-  featured    TINYINT(1)     NOT NULL DEFAULT 0,
+  featured    SMALLINT       NOT NULL DEFAULT 0,
   created_at  TIMESTAMP      NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -37,7 +30,7 @@ CREATE TABLE IF NOT EXISTS products (
 -- Customers (collected at checkout for delivery/shipping)
 -- ------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS customers (
-  id         INT AUTO_INCREMENT PRIMARY KEY,
+  id         SERIAL PRIMARY KEY,
   full_name  VARCHAR(120)  NOT NULL,
   phone      VARCHAR(30)   NOT NULL,
   email      VARCHAR(120)  DEFAULT NULL,
@@ -53,14 +46,14 @@ CREATE TABLE IF NOT EXISTS customers (
 -- Orders
 -- ------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS orders (
-  id          INT AUTO_INCREMENT PRIMARY KEY,
-  ref         VARCHAR(20)   NOT NULL UNIQUE,
-  customer_id INT           NOT NULL,
-  total       DECIMAL(10,2) NOT NULL,
-  delivery_fee DECIMAL(10,2) NOT NULL DEFAULT 0.00,
-  status      ENUM('pending','confirmed','shipped','delivered','cancelled')
-              NOT NULL DEFAULT 'pending',
-  created_at  TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  id           SERIAL PRIMARY KEY,
+  ref          VARCHAR(20)   NOT NULL UNIQUE,
+  customer_id  INT           NOT NULL,
+  total        NUMERIC(10,2) NOT NULL,
+  delivery_fee NUMERIC(10,2) NOT NULL DEFAULT 0.00,
+  status       VARCHAR(20)   NOT NULL DEFAULT 'pending'
+               CHECK (status IN ('pending','confirmed','shipped','delivered','cancelled')),
+  created_at   TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT fk_orders_customer
     FOREIGN KEY (customer_id) REFERENCES customers(id)
     ON DELETE CASCADE
@@ -71,12 +64,12 @@ CREATE TABLE IF NOT EXISTS orders (
 -- on any host, including serverless / Vercel)
 -- ------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS product_images (
-  id          INT AUTO_INCREMENT PRIMARY KEY,
-  product_id  INT NOT NULL,
-  data        LONGBLOB NOT NULL,
+  id           SERIAL PRIMARY KEY,
+  product_id   INT NOT NULL,
+  data         BYTEA NOT NULL,
   content_type VARCHAR(80) NOT NULL,
-  created_at  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  UNIQUE KEY uq_product_image (product_id),
+  created_at   TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE (product_id),
   CONSTRAINT fk_image_product
     FOREIGN KEY (product_id) REFERENCES products(id)
     ON DELETE CASCADE
@@ -86,16 +79,29 @@ CREATE TABLE IF NOT EXISTS product_images (
 -- Order items (snapshot of product so history survives edits)
 -- ------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS order_items (
-  id           INT AUTO_INCREMENT PRIMARY KEY,
+  id           SERIAL PRIMARY KEY,
   order_id     INT           NOT NULL,
   product_id   INT           DEFAULT NULL,
   product_name VARCHAR(120)  NOT NULL,
-  price        DECIMAL(10,2) NOT NULL,
+  price        NUMERIC(10,2) NOT NULL,
   quantity     INT           NOT NULL DEFAULT 1,
   CONSTRAINT fk_items_order
     FOREIGN KEY (order_id) REFERENCES orders(id)
     ON DELETE CASCADE
 );
+
+-- Keep updated_at current whenever admin_credentials changes.
+CREATE OR REPLACE FUNCTION set_updated_at() RETURNS trigger AS $$
+BEGIN
+  NEW.updated_at := CURRENT_TIMESTAMP;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_admin_updated ON admin_credentials;
+CREATE TRIGGER trg_admin_updated
+  BEFORE UPDATE ON admin_credentials
+  FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 -- ------------------------------------------------------------
 -- Seed data - sample watches between KSh 500 and KSh 5,000
