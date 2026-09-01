@@ -59,6 +59,12 @@
     'Homa Bay', 'Migori', 'Kisii', 'Nyamira', 'Nairobi',
   ];
 
+  function escapeHtml(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+    })[c]);
+  }
+
   function formatKSh(n) {
     return 'KSh ' + Number(n).toLocaleString('en-KE', {
       maximumFractionDigits: 0,
@@ -190,9 +196,9 @@
       .map(
         (i) => `
       <div class="cart-item">
-        <img src="${productImage(i)}" alt="${i.name.replace(/"/g, '&quot;')}" loading="lazy" />
+        <img src="${productImage(i)}" alt="${escapeHtml(i.name)}" loading="lazy" />
         <div class="cart-item-info">
-          <div class="cart-item-name">${i.name}</div>
+          <div class="cart-item-name">${escapeHtml(i.name)}</div>
           <div class="cart-item-price">${formatKSh(i.price)}</div>
           <div class="qty-controls">
             <button type="button" data-act="minus" data-id="${i.product_id}" aria-label="Decrease quantity">−</button>
@@ -239,7 +245,7 @@
         ${
           (() => {
             const slides = productSlides(p);
-            const safeAlt = p.name.replace(/"/g, '&quot;');
+            const safeAlt = escapeHtml(p.name);
             const imgs = slides
               .map((s) => `<img class="product-img" src="${s}" alt="${safeAlt}" loading="lazy" />`)
               .join('');
@@ -256,9 +262,9 @@
           })()
         }
         <div class="product-body">
-          <span class="product-cat">${p.category}</span>
-          <h3 class="product-name">${p.name}</h3>
-          <p class="product-desc">${p.description}</p>
+          <span class="product-cat">${escapeHtml(p.category)}</span>
+          <h3 class="product-name">${escapeHtml(p.name)}</h3>
+          <p class="product-desc">${escapeHtml(p.description)}</p>
           <div class="product-foot">
             <span class="product-price">${formatKSh(p.price)}</span>
             <button class="add-btn ${p.stock <= 0 ? 'out' : ''}" data-add="${p.id}" ${p.stock <= 0 ? 'disabled' : ''}>

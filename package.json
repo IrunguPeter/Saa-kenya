@@ -8,15 +8,22 @@
     "dev": "node server.js",
     "setup-db": "bash setup.sh"
   },
-  "keywords": ["watches", "kenya", "ecommerce", "mariadb"],
+  "keywords": [
+    "watches",
+    "kenya",
+    "ecommerce",
+    "mariadb"
+  ],
   "license": "MIT",
   "engines": {
     "node": ">=18"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
+    "cookie-parser": "^1.4.7",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
+    "express-rate-limit": "^8.7.0",
     "multer": "^2.0.1",
     "pg": "^8.13.1"
   }

@@ -1,8 +1,6 @@
 (function () {
   'use strict';
 
-  const TOKEN_KEY = 'saa_admin_token';
-
   const $ = (id) => document.getElementById(id);
   const loginView = $('loginView');
   const adminView = $('adminView');
@@ -20,21 +18,12 @@
 
   // ---------------- Utilities ----------------
 
-  function token() {
-    return localStorage.getItem(TOKEN_KEY) || '';
-  }
-
-  function setToken(t) {
-    if (t) localStorage.setItem(TOKEN_KEY, t);
-    else localStorage.removeItem(TOKEN_KEY);
-  }
-
   function authHeaders() {
-    return { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token() };
+    return { 'Content-Type': 'application/json' };
   }
 
   function formAuthHeaders() {
-    return { Authorization: 'Bearer ' + token() };
+    return {};
   }
 
   function formatKSh(n) {
@@ -89,7 +78,6 @@
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
       if (res.status === 401) {
-        setToken('');
         showLogin();
         $('loginError').textContent = 'Your session expired. Please sign in again.';
         $('loginError').hidden = false;
@@ -114,7 +102,6 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ password: $('adminPassword').value }),
       });
-      setToken(data.token);
       $('loginForm').reset();
       showAdmin();
     } catch (err) {
@@ -126,8 +113,12 @@
     }
   });
 
-  $('logoutBtn').addEventListener('click', () => {
-    setToken('');
+  $('logoutBtn').addEventListener('click', async () => {
+    try {
+      await api('/api/admin/logout', { method: 'POST', headers: authHeaders() });
+    } catch (e) {
+      // The cookie is cleared client-side regardless; ignore network errors.
+    }
     showLogin();
   });
 
@@ -170,7 +161,6 @@
       });
 
       toastMsg('Password changed successfully. Signing out...');
-      setToken('');
       setTimeout(() => {
         showLogin();
         $('passwordForm').reset();
@@ -765,10 +755,8 @@
   // ---------------- Boot ----------------
 
   (function init() {
-    if (token()) {
-      showAdmin();
-    } else {
-      showLogin();
-    }
+    api('/api/admin/stats', { headers: authHeaders() })
+      .then(() => showAdmin())
+      .catch(() => showLogin());
   })();
 })();

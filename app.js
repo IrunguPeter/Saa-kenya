@@ -5,14 +5,50 @@ const crypto = require('crypto');
 const path = require('path');
 const multer = require('multer');
 const bcrypt = require('bcryptjs');
+const rateLimit = require('express-rate-limit');
+const cookieParser = require('cookie-parser');
 const db = require('./db');
 
 const app = express();
-app.use(express.json());
+app.use(express.json({ limit: '10kb' }));
+app.use(cookieParser());
 app.use(express.static(path.join(__dirname, 'public')));
 
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin123';
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
+if (!ADMIN_PASSWORD) {
+  console.error('FATAL: ADMIN_PASSWORD environment variable is required.');
+  console.error('Set ADMIN_PASSWORD in .env before starting the server.');
+  process.exit(1);
+}
+
 const TOKEN_TTL_MS = 1000 * 60 * 60 * 12; // 12 hours
+
+// ---------------- Security headers ----------------
+
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('X-XSS-Protection', '1; mode=block');
+  next();
+});
+
+// ---------------- Rate limiters ----------------
+
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 5,
+  message: { error: 'Too many login attempts. Please try again later.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+const orderLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 10,
+  message: { error: 'Too many orders sent. Please try again later.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 
 // ============ Password Management ============
 
@@ -112,8 +148,10 @@ function verifyToken(token, password) {
 }
 
 function requireAdmin(req, res, next) {
-  const token = (req.headers.authorization || '').replace(/^Bearer\s+/i, '');
-  
+  const token =
+    (req.cookies && req.cookies.saa_admin_token) ||
+    (req.headers.authorization || '').replace(/^Bearer\s+/i, '');
+
   (async () => {
     try {
       // Try to get password from database first
@@ -305,6 +343,7 @@ app.get(
 
 app.post(
   '/api/orders',
+  orderLimiter,
   asyncWrap(async (req, res) => {
     const {
       full_name,
@@ -346,8 +385,10 @@ app.post(
 
       // Build product lookup (id -> row)
       const ids = items.map((i) => Number(i.product_id));
+      // FOR UPDATE locks the rows for the duration of this transaction, so
+      // concurrent orders cannot both read the same stock level and oversell.
       const [productRows] = await conn.query(
-        'SELECT id, name, price, stock FROM products WHERE id IN (?)',
+        'SELECT id, name, price, stock FROM products WHERE id IN (?) FOR UPDATE',
         [ids]
       );
       const byId = new Map(productRows.map((p) => [p.id, p]));
@@ -423,7 +464,7 @@ app.post(
 
 // ---------------- Admin: auth ----------------
 
-app.post('/api/admin/login', asyncWrap(async (req, res) => {
+app.post('/api/admin/login', loginLimiter, asyncWrap(async (req, res) => {
   const { password } = req.body || {};
   if (!password) {
     return res.status(401).json({ error: 'Password is required.' });
@@ -439,14 +480,28 @@ app.post('/api/admin/login', asyncWrap(async (req, res) => {
     const signingKey = dbPasswordHash || ADMIN_PASSWORD;
 
     if (dbPasswordHash && (await verifyPassword(password, dbPasswordHash))) {
+      const token = makeToken(signingKey);
       req._adminPassword = signingKey;
-      return res.json({ token: makeToken(signingKey), expiresIn: TOKEN_TTL_MS });
+      res.cookie('saa_admin_token', token, {
+        httpOnly: true,
+        sameSite: 'Strict',
+        secure: process.env.NODE_ENV === 'production',
+        maxAge: TOKEN_TTL_MS,
+      });
+      return res.json({ token, expiresIn: TOKEN_TTL_MS });
     }
 
     // Fall back to env var password for backward compatibility
     if (password === ADMIN_PASSWORD) {
+      const token = makeToken(signingKey);
       req._adminPassword = signingKey;
-      return res.json({ token: makeToken(signingKey), expiresIn: TOKEN_TTL_MS });
+      res.cookie('saa_admin_token', token, {
+        httpOnly: true,
+        sameSite: 'Strict',
+        secure: process.env.NODE_ENV === 'production',
+        maxAge: TOKEN_TTL_MS,
+      });
+      return res.json({ token, expiresIn: TOKEN_TTL_MS });
     }
 
     res.status(401).json({ error: 'Incorrect admin password.' });
@@ -455,6 +510,15 @@ app.post('/api/admin/login', asyncWrap(async (req, res) => {
     res.status(401).json({ error: 'Incorrect admin password.' });
   }
 }));
+
+app.post('/api/admin/logout', requireAdmin, (req, res) => {
+  res.clearCookie('saa_admin_token', {
+    httpOnly: true,
+    sameSite: 'Strict',
+    secure: process.env.NODE_ENV === 'production',
+  });
+  res.json({ ok: true });
+});
 
 app.post(
   '/api/admin/change-password',
