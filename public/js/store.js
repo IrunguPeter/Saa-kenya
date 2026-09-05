@@ -46,6 +46,15 @@
   const toast = $('toast');
   const yearEl = $('year');
 
+  // Lightbox (click-to-view image gallery)
+  const lightbox = $('lightbox');
+  const lightboxStage = $('lightboxStage');
+  const lightboxClose = $('lightboxClose');
+  const lightboxPrev = $('lightboxPrev');
+  const lightboxNext = $('lightboxNext');
+  const lightboxDots = $('lightboxDots');
+  const lightboxCount = $('lightboxCount');
+
   // ---------------- Utilities ----------------
 
   const KENYAN_COUNTIES = [
@@ -240,7 +249,7 @@
     productGrid.innerHTML = list
       .map(
         (p) => `
-      <article class="product-card">
+      <article class="product-card" data-id="${p.id}">
         ${p.featured ? '<span class="badge-flag">Featured</span>' : ''}
         ${
           (() => {
@@ -292,6 +301,7 @@
 
       const goTo = (i) => {
         index = (i + total) % total;
+        carousel.dataset.index = index;
         track.style.transform = 'translateX(' + -index * 100 + '%)';
         dots.forEach((d, di) => d.classList.toggle('active', di === index));
       };
@@ -322,6 +332,74 @@
 
       goTo(0);
     });
+  }
+
+  // ---------------- Lightbox (enlarged image viewer) ----------------
+
+  let lbSlides = [];
+  let lbIndex = 0;
+
+  function openLightbox(slides, startIndex) {
+    lbSlides = slides;
+    lbIndex = Math.max(0, Math.min(startIndex || 0, slides.length - 1));
+    renderLightbox();
+    lightbox.hidden = false;
+    document.body.style.overflow = 'hidden';
+  }
+
+  function closeLightbox() {
+    lightbox.hidden = true;
+    document.body.style.overflow = '';
+  }
+
+  function renderLightbox() {
+    lightboxStage.innerHTML =
+      '<div class="lightbox-track">' +
+      lbSlides
+        .map(
+          (s, i) =>
+            '<img class="lightbox-img" src="' + s + '" alt="Product image ' +
+            (i + 1) + '" loading="lazy" />'
+        )
+        .join('') +
+      '</div>';
+    updateLightbox();
+  }
+
+  function updateLightbox() {
+    const track = lightboxStage.querySelector('.lightbox-track');
+    if (track) track.style.transform = 'translateX(' + -lbIndex * 100 + '%)';
+    const total = lbSlides.length;
+    lightboxDots.innerHTML =
+      total > 1
+        ? lbSlides
+            .map(
+              (_, i) =>
+                '<span data-i="' + i + '"' + (i === lbIndex ? ' class="active"' : '') + '></span>'
+            )
+            .join('')
+        : '';
+    lightboxPrev.hidden = total <= 1;
+    lightboxNext.hidden = total <= 1;
+    lightboxCount.textContent = total > 1 ? lbIndex + 1 + ' / ' + total : '';
+  }
+
+  function lbGoTo(i) {
+    lbIndex = (i + lbSlides.length) % lbSlides.length;
+    updateLightbox();
+  }
+
+  // Open the lightbox on the slide the customer was viewing in the card carousel.
+  function openLightboxForCard(card) {
+    const product = state.products.find(
+      (p) => p.id === Number(card && card.dataset.id)
+    );
+    if (!product) return;
+    const carousel = card.querySelector('[data-carousel]');
+    openLightbox(
+      productSlides(product),
+      carousel ? Number(carousel.dataset.index) || 0 : 0
+    );
   }
 
   async function loadProducts() {
@@ -472,11 +550,47 @@
       if (product) addToCart(product);
     });
 
+    // Open image lightbox when a product image is clicked.
+    productGrid.addEventListener('click', (e) => {
+      if (!e.target.closest('.img-carousel .product-img')) return;
+      openLightboxForCard(e.target.closest('.product-card'));
+    });
+
+    // Lightbox controls
+    lightboxClose.addEventListener('click', closeLightbox);
+    lightboxPrev.addEventListener('click', () => lbGoTo(lbIndex - 1));
+    lightboxNext.addEventListener('click', () => lbGoTo(lbIndex + 1));
+    lightboxDots.addEventListener('click', (e) => {
+      const dot = e.target.closest('span[data-i]');
+      if (dot) lbGoTo(Number(dot.dataset.i));
+    });
+    lightbox.addEventListener('click', (e) => {
+      if (e.target === lightbox) closeLightbox();
+    });
+
+    // Touch swipe inside the lightbox
+    let lbX0 = null;
+    lightbox.addEventListener('touchstart', (e) => {
+      lbX0 = e.touches[0].clientX;
+    }, { passive: true });
+    lightbox.addEventListener('touchend', (e) => {
+      if (lbX0 == null) return;
+      const dx = e.changedTouches[0].clientX - lbX0;
+      if (Math.abs(dx) > 40) dx < 0 ? lbGoTo(lbIndex + 1) : lbGoTo(lbIndex - 1);
+      lbX0 = null;
+    }, { passive: true });
+
     // Cart drawer
     cartBtn.addEventListener('click', openCart);
     closeCart.addEventListener('click', closeDrawer);
     overlay.addEventListener('click', closeDrawer);
     document.addEventListener('keydown', (e) => {
+      if (!lightbox.hidden) {
+        if (e.key === 'Escape') closeLightbox();
+        else if (e.key === 'ArrowRight') lbGoTo(lbIndex + 1);
+        else if (e.key === 'ArrowLeft') lbGoTo(lbIndex - 1);
+        return;
+      }
       if (e.key === 'Escape') {
         closeDrawer();
         closeModal(checkoutModal);

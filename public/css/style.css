@@ -182,6 +182,8 @@ img { max-width: 100%; display: block; }
 
 .product-img { width: 100%; aspect-ratio: 3 / 2; object-fit: cover; background: #f0ede4; }
 
+.img-carousel .product-img { cursor: zoom-in; }
+
 /* ---- Swipeable image carousel on product cards ---- */
 .img-carousel { position: relative; overflow: hidden; background: #f0ede4; }
 .carousel-track { display: flex; transition: transform 0.3s ease; }
@@ -373,6 +375,56 @@ img { max-width: 100%; display: block; }
 .success-modal { text-align: center; }
 .success-icon { font-size: 3rem; margin-bottom: 8px; }
 .success-modal p { color: var(--muted); margin: 8px 0; }
+
+/* ============ Lightbox ============ */
+
+.lightbox {
+  position: fixed; inset: 0; z-index: 150;
+  background: rgba(15, 17, 21, 0.92);
+  display: flex; align-items: center; justify-content: center;
+  animation: fade 0.2s ease;
+}
+
+@keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+
+.lightbox-stage { width: min(100vw - 40px, 900px); max-height: 78vh; overflow: hidden; }
+
+.lightbox-track { display: flex; transition: transform 0.3s ease; }
+
+.lightbox-img {
+  flex: 0 0 100%; width: 100%; max-height: 78vh; object-fit: contain; background: #000;
+}
+
+.lightbox-close {
+  position: absolute; top: 16px; right: 16px; z-index: 2;
+  width: 42px; height: 42px; border-radius: 50%; border: none; cursor: pointer;
+  background: rgba(255, 255, 255, 0.15); color: #fff; font-size: 1.3rem;
+  display: flex; align-items: center; justify-content: center; transition: background 0.2s;
+}
+.lightbox-close:hover { background: rgba(255, 255, 255, 0.3); }
+
+.lightbox-btn {
+  position: absolute; top: 50%; transform: translateY(-50%); z-index: 2;
+  width: 42px; height: 42px; border-radius: 50%; border: none; cursor: pointer;
+  background: rgba(255, 255, 255, 0.15); color: #fff; font-size: 1.6rem; line-height: 1;
+  display: flex; align-items: center; justify-content: center; transition: background 0.2s;
+}
+.lightbox-btn.prev { left: 16px; }
+.lightbox-btn.next { right: 16px; }
+.lightbox-btn:hover { background: rgba(255, 255, 255, 0.3); }
+
+.lightbox-bottom {
+  position: absolute; left: 0; right: 0; bottom: 18px; z-index: 2;
+  display: flex; flex-direction: column; align-items: center; gap: 10px;
+}
+.lightbox-dots { display: flex; gap: 8px; }
+.lightbox-dots span {
+  width: 9px; height: 9px; border-radius: 50%; background: rgba(255, 255, 255, 0.4);
+  cursor: pointer; transition: background 0.2s;
+}
+.lightbox-dots span.active { background: #fff; }
+
+.lightbox-count { color: rgba(255, 255, 255, 0.85); font-size: 0.85rem; font-weight: 500; }
 
 /* ============ Toast ============ */
 
