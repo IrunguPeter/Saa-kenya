@@ -8,4 +8,4 @@ Allow: /
 Disallow: /admin.html
 Disallow: /api/
 
-Sitemap: https://saa-kenya.vercel.app/sitemap.xml
+Sitemap: https://saakenya.xyz/sitemap.xml
