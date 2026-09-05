@@ -1,0 +1,11 @@
+# Saa Kenya - robots.txt
+# Allow Google and other search engines to crawl the public storefront.
+# The admin portal and API are kept out of search results.
+
+User-agent: *
+Allow: /
+
+Disallow: /admin.html
+Disallow: /api/
+
+Sitemap: https://saa-kenya.vercel.app/sitemap.xml

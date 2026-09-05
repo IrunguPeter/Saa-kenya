@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Saa Kenya sitemap
+  Site is a single-page storefront (products render client-side from /api/products),
+  so the homepage is the only crawlable URL. Add product <url> entries here once
+  you introduce dedicated product pages.
+
+  TODO: when you connect a custom domain, replace every saa-kenya.vercel.app
+  with your real domain (e.g. https://saakenya.co.ke/) and update lastmod.
+-->
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>https://saa-kenya.vercel.app/</loc>
+    <lastmod>2026-09-05</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>1.0</priority>
+  </url>
+</urlset>
