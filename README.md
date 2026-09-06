@@ -178,7 +178,40 @@ Not every product is in stock — and not every watch on a shopper's wishlist ex
 - `POST /api/payments/intasend/webhook` — marks preorders `confirmed` once paid
 - `POST /api/admin/orders/:id/status` — admin can move preorder/custom orders through fulfilment
 
-## New Order Notifications
+## Courier & Delivery Integration (Speedaf Kenya / G4S)
+
+The store collects the customer's delivery details (county, town, estate) at checkout, but fulfilment itself is done by you — package the watch, book a courier, and update the order status. Two reliable nationwide couriers in Kenya plug easily into this flow:
+
+### Option A — Speedaf Express Kenya
+
+- **What they do:** countrywide parcel delivery (plus China↔Africa logistics if you import watches directly), next-day delivery or refund on qualifying routes.
+- **Costs:** charged by actual or volumetric weight; door-to-door delivery available; optional paid **Shipment Protection Program (SPP)** insurance if a parcel is lost/damaged.
+- **Setup:**
+  1. Create a business account at [csp.speedaf.com](https://csp.speedaf.com/login#/login) to get an API key (needed for any automated integration).
+  2. Book consignments via their portal or **`GET /api/...`: request a quote** at [speedaf.com/ke-en/express/order-quote](https://speedaf.com/ke-en/express/order-quote).
+  3. Speedaf has an official **WooCommerce plugin** that creates consignments and syncs products to their OMS — a useful reference for building a custom integration.
+- **Contacts:** Speedaf Kenya, Mombasa Road, Nairobi · phone **+254 741 000 888** · speedaf.com
+- **Integration notes:** Speedaf exposes a REST API + webhooks (also available via AfterShip/TrackingMore webhooks) for automated tracking updates — you could push real-time tracking codes into the store's order status.
+
+### Option B — G4S Courier (Kenya)
+
+- **What they do:** established national courier with **100+ branches** and door-to-door delivery within a 5 km radius of any branch (full street/building address required for door deliveries).
+- **Services:** **One-hour express**, **same-day**, and **overnight courier (by noon next day)**. G4S can also pick up/dedicated-personnel to collect, pack and dispatch from your premises.
+- **Costs (from Nairobi, up to 5 kg, incl. VAT):** ~KSh 360–800 depending on destination (e.g. Nakuru/Kiambu ~KSh 360, Mombasa ~KSh 858, Lamu/Hola ~KSh 2,083); ~KSh 65 per extra kg. Rates change — confirm with an agent or the price calculator.
+- **Setup:**
+  1. Open an account / get a quote at the [G4S price calculator](https://g4s-portal.logixplatform.com/price-calculator.html).
+  2. Book shipments online at the [G4S logistics portal](https://g4s-portal.logixplatform.com/shpment1.html) (OTP-verified) — deliveries in ~2–3 days.
+  3. Track via their [online tracking widget](https://www.g4s.com/en-ke).
+- **Contacts:** G4S Kenya head office, Watu Road, Nairobi · g4s.com/en-ke
+
+### Recommended workflow (manual, no extra code)
+
+1. New order arrives → package the watch.
+2. Look up the destination in your courier's rate table and `POST /api/admin/orders/:id/status` to mark it `shipped` once booked.
+3. Send the customer the tracking/consignment number (via WhatsApp/email) and set status `delivered` on confirmation.
+4. Where the customer pays **on delivery** (POD), note that couriers usually settle COD collections by EFT on a schedule — factor that delay into your cash flow.
+
+> **Tip:** today the store uses a flat **KSh 150** delivery fee (free over KSh 2,000), which is often below the real courier cost to far counties. Consider computing the fee from your courier's actual per-county rate table (`app.js:520` and `public/js/store.js:139`) if margins are being eaten.
 
 Never miss a sale. The store can alert the owner the moment a new order is placed, through **email** and/or a **browser notification**.
 
