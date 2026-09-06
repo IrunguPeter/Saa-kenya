@@ -12,6 +12,7 @@ Customers can browse the catalogue, pay securely through **IntaSend** (including
 - 📱 Payments via **IntaSend** — M-Pesa STK push, cards and PayPal buttons
 - 🔐 Optional **SSO login** with Google, or a corporate **Keycloak** realm
 - 📦 Order confirmation and tracking
+- ⏳ **Preorders & custom orders** — reserve an out-of-stock watch or request a custom-made one (payment upfront)
 - 🧑‍🤝‍🧑 **Affiliate program** — earn commission for every sale you refer
 - 💬 Join our **WhatsApp community** and follow us on Instagram, X (Twitter), Facebook and TikTok
 
@@ -138,6 +139,43 @@ Option B — **use Keycloak to federate Google**: instead of wiring OAuth direct
 - `POST /api/payments/intasend/stk` — initiate an M-Pesa STK push for the cart total
 - `POST /api/payments/intasend/webhook` — payment status updates (protected by webhook signature)
 - `POST /api/payments/intasend/verify` — verify a completed payment by `tracking_id`
+
+## Preorders & Custom Orders
+
+Not every product is in stock — and not every watch on a shopper's wishlist exists yet. Customers can **preorder** items that are unavailable or **request a custom order**, and they **pay upfront** for either.
+
+### How it works
+
+**Preorder** — the item is already in our catalogue but out of stock (e.g. a popular model that sold out):
+
+1. On the product page (or product card), the "Preorder" button replaces "Add to Cart" when `stock` is 0.
+2. The customer reserves the item, pays for it upfront via **IntaSend** (M-Pesa STK push, card or PayPal).
+3. When the stock is restocked, their order moves to the front of the queue and is delivered first.
+4. If restock doesn't happen, the customer is refunded immediately (IntaSend payout).
+
+**Custom order** — the watch doesn't exist yet or needs to be personalised (e.g. engraved case, specific strap/colour, a model we should source):
+
+1. The customer submits a **custom order request** describing what they want (model, colour, strap, engraving text, budget, photo/link of the exact watch).
+2. We reply (via WhatsApp/call/email) with a **quotation** and a payment link for a deposit or the full amount.
+3. Once they pay, we source or build the watch. They approve a photo before dispatch.
+4. Custom orders have a quoted turnaround time and a **no-refund-after-production** policy.
+
+### Key rules
+- **Preorders & custom orders require payment upfront.** The order is only confirmed once IntaSend reports the payment as successful.
+- Delivery/refund is handled the same way as normal orders (nationwide, free over KSh 2,000), with refunds going back to the original payment method (M-Pesa number via IntaSend payouts).
+- Custom orders are quoted manually: deposits are non-refundable once production/sourcing starts.
+- An order's `status` distinguishes these orders:
+  - `pending` — placed, awaiting payment via IntaSend
+  - `confirmed` — payment received, pre-order/custom work in progress
+  - `shipped` / `delivered` — standard fulfilment
+  - `cancelled` — refunded (auto-refunded if a preorder can't be fulfilled)
+
+### API endpoints
+- `GET /api/products/:id` — product detail (exposes `stock: 0` so the storefront can show Preorder)
+- `POST /api/orders/preorder` — place a paid preorder for an out-of-stock item (creates the order + initiates the IntaSend charge)
+- `POST /api/orders/custom` — submit a custom order request (call to action; quotation follows)
+- `POST /api/payments/intasend/webhook` — marks preorders `confirmed` once paid
+- `POST /api/admin/orders/:id/status` — admin can move preorder/custom orders through fulfilment
 
 ## Affiliate Program
 
@@ -285,7 +323,10 @@ Admins can securely change their password through the admin portal:
 
 ### Public
 - `GET /api/products` - List products with filtering
+- `GET /api/products/:id` - Product detail (includes stock level)
 - `POST /api/orders` - Create new order
+- `POST /api/orders/preorder` - Place a paid preorder for an out-of-stock item
+- `POST /api/orders/custom` - Submit a custom order request
 
 ### Customer Auth
 - `POST /api/auth/google` - Start Google SSO login
