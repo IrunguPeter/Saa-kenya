@@ -8,6 +8,16 @@
   <meta name="robots" content="index, follow" />
   <link rel="canonical" href="https://saakenya.xyz/" />
 
+  <!-- hreflang: tell Google this is the English (Kenya) version -->
+  <link rel="alternate" hreflang="en-KE" href="https://saakenya.xyz/" />
+  <link rel="alternate" hreflang="x-default" href="https://saakenya.xyz/" />
+
+  <!-- Geo metadata (used by Bing & other engines; for Google use the hreflang + JSON-LD below) -->
+  <meta name="geo.region" content="KE" />
+  <meta name="geo.placename" content="Nairobi" />
+  <meta name="geo.position" content="-1.292066;36.821946" />
+  <meta name="ICBM" content="-1.292066, 36.821946" />
+
   <!-- Open Graph (Facebook, LinkedIn, WhatsApp previews) -->
   <meta property="og:type" content="website" />
   <meta property="og:site_name" content="Saa Kenya" />
@@ -30,8 +40,25 @@
     "url": "https://saakenya.xyz/",
     "logo": "https://saakenya.xyz/favicon.svg",
     "email": "hello@saakenya.co.ke",
-    "currency": "KES",
-    "areaServed": "KE"
+    "currenciesAccepted": "KES",
+    "paymentAccepted": "M-PESA, Cash on Delivery, Card, PayPal",
+    "areaServed": {
+      "@type": "Country",
+      "name": "Kenya"
+    },
+    "address": {
+      "@type": "PostalAddress",
+      "addressLocality": "Nairobi",
+      "addressCountry": "KE"
+    },
+    "contactPoint": {
+      "@type": "ContactPoint",
+      "telephone": "+254-700-000-000",
+      "email": "hello@saakenya.co.ke",
+      "contactType": "customer support",
+      "areaServed": "KE",
+      "availableLanguage": "English"
+    }
   }
   </script>
 

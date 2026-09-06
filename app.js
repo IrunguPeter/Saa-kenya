@@ -13,9 +13,10 @@ const app = express();
 app.use(express.json({ limit: '10kb' }));
 app.use(cookieParser());
 
-// Capture ?ref=CODE referral links: set a persistent referral cookie, bump the
-// affiliate's click counter, then redirect to the clean URL so the code only
-// appears once in the address bar.
+// Capture ?ref=CODE referral links: set a persistent referral cookie and bump
+// the affiliate's click counter. The page is served as-is (200) and the
+// canonical tag points to the clean URL, so referral links never create
+// redirects that block indexing in Google Search Console.
 app.use((req, res, next) => {
   const ref = typeof req.query.ref === 'string' ? req.query.ref.trim().slice(0, 30) : '';
   if (req.method !== 'GET' || !ref) return next();
@@ -26,8 +27,7 @@ app.use((req, res, next) => {
         'SELECT id FROM affiliates WHERE code = ? AND status = ? LIMIT 1',
         [ref, 'active']
       );
-      const clean = String(req.originalUrl || req.url).split('?')[0] || '/';
-      if (rows.length === 0) return res.redirect(302, clean);
+      if (rows.length === 0) return next();
       const isNew = !(req.cookies && req.cookies.saa_ref === ref);
       res.cookie('saa_ref', ref, {
         httpOnly: true,
@@ -38,7 +38,7 @@ app.use((req, res, next) => {
       if (isNew) {
         await db.query('UPDATE affiliates SET clicks = clicks + 1 WHERE id = ?', [rows[0].id]);
       }
-      res.redirect(302, clean);
+      next();
     } catch (err) {
       next(err);
     }
