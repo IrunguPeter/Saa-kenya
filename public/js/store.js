@@ -518,6 +518,8 @@
   }
 
   // ---------------- Affiliate portal ----------------
+  // Moved to /affiliates.html (public/js/affiliates.js). Code below stays for
+  // backwards compatibility but only runs when the container exists on a page.
 
   const affRoot = $('affRoot');
 
@@ -935,10 +937,12 @@
     yearEl.textContent = new Date().getFullYear();
     setupCountyList();
     bindEvents();
-    bindAffiliateEvents();
+    if (affRoot) {
+      bindAffiliateEvents();
+      loadAffPortal();
+    }
     renderCart();
     loadProducts();
-    loadAffPortal();
   }
 
   init();
