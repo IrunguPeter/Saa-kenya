@@ -20,6 +20,7 @@ Customers can browse the catalogue, pay securely through **IntaSend** (including
 - 📊 Dashboard with sales statistics and inventory overview
 - 📦 Product management (add, edit, delete, image uploads)
 - 🧾 Order tracking with status updates
+- 🔔 **New-order alerts** — get notified (email and/or browser notification) the moment an order comes in
 - 🔐 **Secure admin authentication** with password management
 
 ## Customer Accounts & SSO
@@ -176,6 +177,45 @@ Not every product is in stock — and not every watch on a shopper's wishlist ex
 - `POST /api/orders/custom` — submit a custom order request (call to action; quotation follows)
 - `POST /api/payments/intasend/webhook` — marks preorders `confirmed` once paid
 - `POST /api/admin/orders/:id/status` — admin can move preorder/custom orders through fulfilment
+
+## New Order Notifications
+
+Never miss a sale. The store can alert the owner the moment a new order is placed, through **email** and/or a **browser notification**.
+
+### Email alerts
+An email is sent to the store owner's inbox whenever an order is placed (`POST /api/orders`, preorders or custom orders). The email includes:
+- Order reference and total
+- Items ordered (name, Qty, price)
+- Customer details + delivery address (county, town, estate)
+- Payment status (paid / pay-on-delivery)
+
+Sending is done **asynchronously** so it never slows down checkout. Configurable via a transactional email provider:
+
+| Provider | Env vars |
+|----------|----------|
+| SMTP (any) | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS` (or `SMTP_URL`) |
+| Resend | `RESEND_API_KEY`, `MAIL_FROM`, `ADMIN_NOTIFY_EMAIL` |
+| Amazon SES | `SES_REGION`, `SES_ACCESS_KEY_ID`, `SES_SECRET_ACCESS_KEY`, `ADMIN_NOTIFY_EMAIL` |
+
+- `ADMIN_NOTIFY_EMAIL` — the inbox that receives new-order alerts (defaults to `EMAIL_NOTIFY`/`ADMIN_EMAIL` if set).
+- `MAIL_FROM` — sender address (e.g. `orders@saakenya.xyz`).
+- `EMAIL_ENABLED=false` overrides/`false` disables email alerts.
+
+### Browser notification / alert
+While the **admin dashboard** (`/admin.html`) is open, it checks for new orders every ~60 seconds and alerts you instantly without refreshing:
+
+- 🔔 **Desktop notification** via the browser [Notification API](https://developer.mozilla.org/docs/Web/API/Notification) (grant permission once; works on desktop and Android).
+- 🔊 **Audible + in-page alert** — a toast/banner in the admin panel with the order reference and total, plus a beep.
+- 📋 The alert links straight to the new order so you can confirm/update status in one click.
+
+Optional **progressive web push** (alerts even when the dashboard is closed or on another tab):
+- Uses a service worker + web-push (VAPID keys). When enabled, the store pushes a "New order received" notification to the owner's device.
+- Requires `WEB_PUSH_PUBLIC_KEY`, `WEB_PUSH_PRIVATE_KEY`, `WEB_PUSH_SUBJECT` and one-time permission on the device.
+
+### API endpoints
+- `POST /api/admin/notify` — send a test notification (email + browser push) to verify setup
+- `GET /api/admin/notifications/check` — called by the dashboard on its 60s poll; returns new/unseen orders since the last check
+- `GET /api/admin/notifications/subscribe` — register a device for web push
 
 ## Affiliate Program
 
@@ -359,6 +399,9 @@ Admins can securely change their password through the admin portal:
 - `DELETE /api/admin/products/:id` - Delete product
 - `POST /api/admin/products/:id/image` - Upload product image
 - `DELETE /api/admin/products/:id/image` - Remove product image
+- `POST /api/admin/notify` - Send a test notification (email + browser push)
+- `GET /api/admin/notifications/check` - Poll for new orders since last check
+- `GET /api/admin/notifications/subscribe` - Register a device for web push
 
 ## Deployment
 
