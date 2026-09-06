@@ -1,20 +1,303 @@
-# Saa-kenya
+# Saa Kenya
 
 An E-commerce store for selling affordable watches in Kenya (KSh 500–5,000).
 
+Customers can browse the catalogue, pay securely through **IntaSend** (including M-Pesa STK push), sign in with their **Google** account or a **Keycloak** SSO account, refer friends through the **affiliate program**, and stay connected via our **WhatsApp group** and **social media** pages.
+
 ## Features
+
+### Customer Features
+- 🛍️ Browse products by category or search
+- 🛒 Shopping cart and checkout with delivery details
+- 📱 Payments via **IntaSend** — M-Pesa STK push, cards and PayPal buttons
+- 🔐 Optional **SSO login** with Google, or a corporate **Keycloak** realm
+- 📦 Order confirmation and tracking
+- ⏳ **Preorders & custom orders** — reserve an out-of-stock watch or request a custom-made one (payment upfront)
+- 🧑‍🤝‍🧑 **Affiliate program** — earn commission for every sale you refer
+- 💬 Join our **WhatsApp community** and follow us on Instagram, X (Twitter), Facebook and TikTok
 
 ### Admin Portal
 - 📊 Dashboard with sales statistics and inventory overview
 - 📦 Product management (add, edit, delete, image uploads)
 - 🧾 Order tracking with status updates
+- 🔔 **New-order alerts** — get notified (email and/or browser notification) the moment an order comes in
 - 🔐 **Secure admin authentication** with password management
 
-### Customer Features
-- 🛍️ Browse products by category or search
-- 🛒 Shopping cart and checkout
-- 📍 Delivery address collection
-- 📧 Order confirmation emails
+## Customer Accounts & SSO
+
+Customers can create an account so we can remember their details, show order history and (with consent) use their data for offers and support. Two single sign-on options are supported:
+
+- **Google Sign-In** — the simplest for consumers. Customers log in with their existing Google account in one click.
+- **Keycloak SSO** — for corporate customers or organisations that want to manage access to your store from their own identity provider. Keycloak speaks standard OIDC, so any IdP (Google, Azure AD, Okta, LDAP-backed Keycloak) can be bridged through it.
+
+### How accounts are used
+
+| Data | Purpose |
+|------|---------|
+| Name, email | Order confirmation, account identification |
+| Phone | Delivery coordination, M-Pesa payment receipt |
+| Address (county, town, estate) | Shipping & delivery |
+| Order history | Order tracking and re-ordering |
+
+Customer data is never sold. Data collection happens only after the customer signs up and agrees to the consent notice.
+
+### 1. Google Sign-In setup
+
+1. Go to the [Google Cloud Console](https://console.cloud.google.com).
+2. Create a project (or reuse one) and enable the **OAuth consent screen** (External user type).
+3. Add your app, logo and the authorized redirect URI:
+   ```
+   https://your-domain.com/api/auth/google/callback
+   ```
+   (use `http://localhost:3000/...` for local development)
+4. Create **OAuth client ID** credentials → **Web application**.
+5. Copy the Client ID and Client Secret into your environment:
+
+   ```
+   GOOGLE_CLIENT_ID=xxx.apps.googleusercontent.com
+   GOOGLE_CLIENT_SECRET=GOCSPX-xxxx
+   GOOGLE_CALLBACK_URL=https://your-domain.com/api/auth/google/callback
+   ```
+
+### 2. Keycloak SSO setup
+
+Option A — **use a hosted Keycloak** (e.g. `keycloak.io`, or a self-hosted instance on a cloud VM).
+
+Option B — **use Keycloak to federate Google**: instead of wiring OAuth directly, you can point Keycloak at Google as an identity provider; customers then see a Keycloak login that forwards to Google.
+
+1. Install and run Keycloak, then create a **Realm** for your store.
+2. Create a **Client** of type `openid-connect`, access type **public**, and set redirect URIs:
+   ```
+   https://your-domain.com/api/auth/keycloak/callback
+   ```
+3. Create a Client ID (e.g. `saa-store`) and copy the realm's **Well-Known OpenID Configuration** URL:
+   ```
+   https://your-keycloak.example/realms/<realm>/.well-known/openid-configuration
+   ```
+4. Set the environment variables:
+
+   ```
+   KEYCLOAK_URL=https://your-keycloak.example
+   KEYCLOAK_REALM=your-realm
+   KEYCLOAK_CLIENT_ID=saa-store
+   REDIRECT_URI=https://your-domain.com/api/auth/keycloak/callback
+   ```
+
+5. Create users (or connect a user federation / LDAP / Azure AD) inside the realm. They will then be able to sign in to the store.
+
+### Auth-related API endpoints
+- `POST /api/auth/google` — start Google OAuth flow
+- `GET /api/auth/google/callback` — Google OAuth callback
+- `POST /api/auth/keycloak` — start Keycloak login (OIDC authorization)
+- `GET /api/auth/keycloak/callback` — Keycloak OIDC callback
+- `POST /api/auth/logout` — sign the customer out
+- `GET /api/auth/me` — current signed-in customer profile and consent status
+
+## Payments (IntaSend)
+
+[IntaSend](https://intasend.com) handles checkout payments so customers can pay the way they prefer:
+
+- **M-Pesa STK push** — customer approves payment on their phone
+- **Card payments** — local and international cards
+- **PayPal buttons** — for international customers
+
+### IntaSend setup
+
+1. Create a free account at [intasend.com](https://intasend.com).
+2. From the dashboard, create a **Publishable key** (for the frontend, `is_pk_...`) and a **Secret key** (for the server, `is_sk_...`).
+3. Set the webhook URL so order statuses update automatically:
+   ```
+   https://your-domain.com/api/payments/intasend/webhook
+   ```
+   Enable the **MPESA STK Pay** and **Collection** event types.
+4. Add the keys + callback URLs to your environment:
+
+   ```
+   INTASEND_PUBLISHABLE_KEY=is_pk_your_key
+   INTASEND_SECRET_KEY=is_sk_your_key
+   INTASEND_API_BASE=https://payment.intasend.com
+   INTASEND_WEBHOOK_SECRET=your-signature-secret
+   INTASEND_REDIRECT_URL=https://your-domain.com/order/confirmation
+   ```
+
+5. Add the IntaSend JavaScript widget to the storefront:
+   ```html
+   <script src="https://unpkg.com/intasend-inlinejs-sdk@3/build/intasend-inline.js"></script>
+   ```
+   Configure it with your publishable key and the checkout amount, then call
+   `intasendCheckoutJS({ ... })` on the "Pay" button. The inline SDK handles the
+   M-Pesa / card flow and returns a `tracking_id` for verification.
+
+> **Tip:** In sandbox, use the test keys (`is_pk_test_...`, `is_sk_test_...`) and
+> check the [IntaSend sandbox guide](https://developers.intasend.com) for test M-Pesa numbers.
+
+### Payment flows
+- **Checkout (STK push):** store creates the amount via `POST /api/payments/intasend/stk` → IntaSend triggers the M-Pesa prompt → webhook marks the order `confirmed`.
+- **Inline widget:** frontend collects the money via the IntaSend iframe/JS → you verify the `tracking_id` on the server → order is confirmed.
+- **Payouts (affiliates & refunds):** use the IntaSend payouts API to send commission/refunds to an M-Pesa number.
+
+### Payment API endpoints
+- `POST /api/payments/intasend/stk` — initiate an M-Pesa STK push for the cart total
+- `POST /api/payments/intasend/webhook` — payment status updates (protected by webhook signature)
+- `POST /api/payments/intasend/verify` — verify a completed payment by `tracking_id`
+
+## Preorders & Custom Orders
+
+Not every product is in stock — and not every watch on a shopper's wishlist exists yet. Customers can **preorder** items that are unavailable or **request a custom order**, and they **pay upfront** for either.
+
+### How it works
+
+**Preorder** — the item is already in our catalogue but out of stock (e.g. a popular model that sold out):
+
+1. On the product page (or product card), the "Preorder" button replaces "Add to Cart" when `stock` is 0.
+2. The customer reserves the item, pays for it upfront via **IntaSend** (M-Pesa STK push, card or PayPal).
+3. When the stock is restocked, their order moves to the front of the queue and is delivered first.
+4. If restock doesn't happen, the customer is refunded immediately (IntaSend payout).
+
+**Custom order** — the watch doesn't exist yet or needs to be personalised (e.g. engraved case, specific strap/colour, a model we should source):
+
+1. The customer submits a **custom order request** describing what they want (model, colour, strap, engraving text, budget, photo/link of the exact watch).
+2. We reply (via WhatsApp/call/email) with a **quotation** and a payment link for a deposit or the full amount.
+3. Once they pay, we source or build the watch. They approve a photo before dispatch.
+4. Custom orders have a quoted turnaround time and a **no-refund-after-production** policy.
+
+### Key rules
+- **Preorders & custom orders require payment upfront.** The order is only confirmed once IntaSend reports the payment as successful.
+- Delivery/refund is handled the same way as normal orders (nationwide, free over KSh 2,000), with refunds going back to the original payment method (M-Pesa number via IntaSend payouts).
+- Custom orders are quoted manually: deposits are non-refundable once production/sourcing starts.
+- An order's `status` distinguishes these orders:
+  - `pending` — placed, awaiting payment via IntaSend
+  - `confirmed` — payment received, pre-order/custom work in progress
+  - `shipped` / `delivered` — standard fulfilment
+  - `cancelled` — refunded (auto-refunded if a preorder can't be fulfilled)
+
+### API endpoints
+- `GET /api/products/:id` — product detail (exposes `stock: 0` so the storefront can show Preorder)
+- `POST /api/orders/preorder` — place a paid preorder for an out-of-stock item (creates the order + initiates the IntaSend charge)
+- `POST /api/orders/custom` — submit a custom order request (call to action; quotation follows)
+- `POST /api/payments/intasend/webhook` — marks preorders `confirmed` once paid
+- `POST /api/admin/orders/:id/status` — admin can move preorder/custom orders through fulfilment
+
+## Courier & Delivery Integration (Speedaf Kenya / G4S)
+
+The store collects the customer's delivery details (county, town, estate) at checkout, but fulfilment itself is done by you — package the watch, book a courier, and update the order status. Two reliable nationwide couriers in Kenya plug easily into this flow:
+
+### Option A — Speedaf Express Kenya
+
+- **What they do:** countrywide parcel delivery (plus China↔Africa logistics if you import watches directly), next-day delivery or refund on qualifying routes.
+- **Costs:** charged by actual or volumetric weight; door-to-door delivery available; optional paid **Shipment Protection Program (SPP)** insurance if a parcel is lost/damaged.
+- **Setup:**
+  1. Create a business account at [csp.speedaf.com](https://csp.speedaf.com/login#/login) to get an API key (needed for any automated integration).
+  2. Book consignments via their portal or **`GET /api/...`: request a quote** at [speedaf.com/ke-en/express/order-quote](https://speedaf.com/ke-en/express/order-quote).
+  3. Speedaf has an official **WooCommerce plugin** that creates consignments and syncs products to their OMS — a useful reference for building a custom integration.
+- **Contacts:** Speedaf Kenya, Mombasa Road, Nairobi · phone **+254 741 000 888** · speedaf.com
+- **Integration notes:** Speedaf exposes a REST API + webhooks (also available via AfterShip/TrackingMore webhooks) for automated tracking updates — you could push real-time tracking codes into the store's order status.
+
+### Option B — G4S Courier (Kenya)
+
+- **What they do:** established national courier with **100+ branches** and door-to-door delivery within a 5 km radius of any branch (full street/building address required for door deliveries).
+- **Services:** **One-hour express**, **same-day**, and **overnight courier (by noon next day)**. G4S can also pick up/dedicated-personnel to collect, pack and dispatch from your premises.
+- **Costs (from Nairobi, up to 5 kg, incl. VAT):** ~KSh 360–800 depending on destination (e.g. Nakuru/Kiambu ~KSh 360, Mombasa ~KSh 858, Lamu/Hola ~KSh 2,083); ~KSh 65 per extra kg. Rates change — confirm with an agent or the price calculator.
+- **Setup:**
+  1. Open an account / get a quote at the [G4S price calculator](https://g4s-portal.logixplatform.com/price-calculator.html).
+  2. Book shipments online at the [G4S logistics portal](https://g4s-portal.logixplatform.com/shpment1.html) (OTP-verified) — deliveries in ~2–3 days.
+  3. Track via their [online tracking widget](https://www.g4s.com/en-ke).
+- **Contacts:** G4S Kenya head office, Watu Road, Nairobi · g4s.com/en-ke
+
+### Recommended workflow (manual, no extra code)
+
+1. New order arrives → package the watch.
+2. Look up the destination in your courier's rate table and `POST /api/admin/orders/:id/status` to mark it `shipped` once booked.
+3. Send the customer the tracking/consignment number (via WhatsApp/email) and set status `delivered` on confirmation.
+4. Where the customer pays **on delivery** (POD), note that couriers usually settle COD collections by EFT on a schedule — factor that delay into your cash flow.
+
+> **Tip:** today the store uses a flat **KSh 150** delivery fee (free over KSh 2,000), which is often below the real courier cost to far counties. Consider computing the fee from your courier's actual per-county rate table (`app.js:520` and `public/js/store.js:139`) if margins are being eaten.
+
+Never miss a sale. The store can alert the owner the moment a new order is placed, through **email** and/or a **browser notification**.
+
+### Email alerts
+An email is sent to the store owner's inbox whenever an order is placed (`POST /api/orders`, preorders or custom orders). The email includes:
+- Order reference and total
+- Items ordered (name, Qty, price)
+- Customer details + delivery address (county, town, estate)
+- Payment status (paid / pay-on-delivery)
+
+Sending is done **asynchronously** so it never slows down checkout. Configurable via a transactional email provider:
+
+| Provider | Env vars |
+|----------|----------|
+| SMTP (any) | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS` (or `SMTP_URL`) |
+| Resend | `RESEND_API_KEY`, `MAIL_FROM`, `ADMIN_NOTIFY_EMAIL` |
+| Amazon SES | `SES_REGION`, `SES_ACCESS_KEY_ID`, `SES_SECRET_ACCESS_KEY`, `ADMIN_NOTIFY_EMAIL` |
+
+- `ADMIN_NOTIFY_EMAIL` — the inbox that receives new-order alerts (defaults to `EMAIL_NOTIFY`/`ADMIN_EMAIL` if set).
+- `MAIL_FROM` — sender address (e.g. `orders@saakenya.xyz`).
+- `EMAIL_ENABLED=false` overrides/`false` disables email alerts.
+
+### Browser notification / alert
+While the **admin dashboard** (`/admin.html`) is open, it checks for new orders every ~60 seconds and alerts you instantly without refreshing:
+
+- 🔔 **Desktop notification** via the browser [Notification API](https://developer.mozilla.org/docs/Web/API/Notification) (grant permission once; works on desktop and Android).
+- 🔊 **Audible + in-page alert** — a toast/banner in the admin panel with the order reference and total, plus a beep.
+- 📋 The alert links straight to the new order so you can confirm/update status in one click.
+
+Optional **progressive web push** (alerts even when the dashboard is closed or on another tab):
+- Uses a service worker + web-push (VAPID keys). When enabled, the store pushes a "New order received" notification to the owner's device.
+- Requires `WEB_PUSH_PUBLIC_KEY`, `WEB_PUSH_PRIVATE_KEY`, `WEB_PUSH_SUBJECT` and one-time permission on the device.
+
+### API endpoints
+- `POST /api/admin/notify` — send a test notification (email + browser push) to verify setup
+- `GET /api/admin/notifications/check` — called by the dashboard on its 60s poll; returns new/unseen orders since the last check
+- `GET /api/admin/notifications/subscribe` — register a device for web push
+
+## Affiliate Program
+
+The **Affiliates** tab lets anyone advertise Saa Kenya and earn a commission on the sales they refer. It is a self-service model: no contract needed, just sign up and start sharing your link.
+
+### How it works for affiliates
+1. Open the **Affiliates** tab on the storefront and click **Become an Affiliate**.
+2. Sign in (Google / Keycloak) or create an affiliate account with your M-Pesa number.
+3. You get a unique referral link, e.g.:
+   ```
+   https://your-domain.com/?ref=affiliate123
+   ```
+4. Share it anywhere — WhatsApp, Instagram, TikTok, X, Facebook, YouTube.
+5. When someone uses your link:
+   - The `?ref=` code is saved in a cookie so the referral survives the whole visit.
+   - When they checkout and pay successfully, a **10% commission** is credited to you.
+6. See earnings and stats on your affiliate dashboard, and request payout to your M-Pesa / bank number (paid out via IntaSend).
+
+### Affiliate rules
+- Commission: **10%** of the paid order total (excluding delivery fee).
+- Earned when the referred order is **paid** (not just placed) and not cancelled.
+- Store cookies for **30 days** — any purchase within 30 days of the first visit still counts.
+- Payouts are processed monthly, or on request once you reach the KSh 500 minimum.
+
+### Affiliate API endpoints
+- `POST /api/affiliates/register` — create an affiliate account (or link referral code to SSO login)
+- `GET /api/affiliates/dashboard` — stats: clicks, conversions, earnings, payout balance
+- `GET /api/affiliates/links` — generate/manage referral links and promo banners
+- `POST /api/affiliates/payout` — request payout to M-Pesa (IntaSend payouts)
+- `GET /api/affiliates/payments` — track approved payouts and commissions
+
+## Community & Social Media
+
+Stay in touch with Saa Kenya — the fastest way to hear about new arrivals, restocks and flash sales.
+
+- 💬 **WhatsApp Community group** — deals, restock alerts and direct support:
+  **[click here to join](https://chat.whatsapp.com/REPLACE_WITH_YOUR_GROUP_INVITE_LINK)**
+- 📸 **Instagram** — daily watch photos & stories:
+  [@saa.kenya](https://instagram.com/REPLACE_WITH_YOUR_HANDLE)
+- ✖️ **X (Twitter)** — announcements and customer support:
+  [@saa_kenya](https://x.com/REPLACE_WITH_YOUR_HANDLE)
+- 📘 **Facebook** — page for product drops and community posts:
+  [facebook.com/REPLACE_WITH_YOUR_PAGE](https://facebook.com/REPLACE_WITH_YOUR_PAGE)
+- 🎵 **TikTok** — short product videos & watch unboxings:
+  [@saa.kenya](https://tiktok.com/REPLACE_WITH_YOUR_HANDLE)
+
+> Replace the `REPLACE_WITH_...` placeholder links with the real handles/URLs for the store.
+
+The same links appear in the storefront footer and on the product pages, next to the "Share this watch" buttons.
 
 ## Admin Password Management
 
@@ -46,6 +329,9 @@ Admins can securely change their password through the admin portal:
 - **Backend:** Node.js + Express
 - **Database:** PostgreSQL (Supabase)
 - **Frontend:** Vanilla JS + CSS
+- **Auth:** Google OAuth 2.0 / OIDC, Keycloak (OIDC), JWT session cookies
+- **Payments:** IntaSend (M-Pesa STK push, cards, PayPal) with webhooks
+- **Affiliates:** referral cookie tracking + commission ledger
 - **Security:** bcrypt password hashing, HMAC-SHA256 tokens
 - **Hosting:** Vercel (with serverless-friendly connection pooling)
 
@@ -55,6 +341,8 @@ Admins can securely change their password through the admin portal:
 - Node.js 18+
 - PostgreSQL (free tier: Supabase)
 - npm
+- IntaSend account (free) — for payments
+- Google Cloud console project **or** a Keycloak realm — for SSO (optional at first)
 
 ### Installation
 
@@ -78,10 +366,21 @@ Admins can securely change their password through the admin portal:
    ```bash
    cp .env.example .env
    ```
-   Edit `.env` and set your database connection:
+   Edit `.env` and set your database connection, payment keys and (optionally) SSO keys:
    ```
    DATABASE_URL=postgresql://postgres.yourref:password@aws-0-region.pooler.supabase.com:6543/postgres?ssl=true
    ADMIN_PASSWORD=YourSecurePassword123
+
+   # Payments (IntaSend)
+   INTASEND_PUBLISHABLE_KEY=is_pk_your_key
+   INTASEND_SECRET_KEY=is_sk_your_key
+
+   # SSO (both optional)
+   GOOGLE_CLIENT_ID=
+   GOOGLE_CLIENT_SECRET=
+   KEYCLOAK_URL=
+   KEYCLOAK_REALM=
+   KEYCLOAK_CLIENT_ID=
    ```
 
 5. **Start the server:**
@@ -97,7 +396,30 @@ Admins can securely change their password through the admin portal:
 
 ### Public
 - `GET /api/products` - List products with filtering
+- `GET /api/products/:id` - Product detail (includes stock level)
 - `POST /api/orders` - Create new order
+- `POST /api/orders/preorder` - Place a paid preorder for an out-of-stock item
+- `POST /api/orders/custom` - Submit a custom order request
+
+### Customer Auth
+- `POST /api/auth/google` - Start Google SSO login
+- `GET /api/auth/google/callback` - Google OAuth callback
+- `POST /api/auth/keycloak` - Start Keycloak login
+- `GET /api/auth/keycloak/callback` - Keycloak OIDC callback
+- `POST /api/auth/logout` - Customer logout
+- `GET /api/auth/me` - Current customer profile
+
+### Payments (IntaSend)
+- `POST /api/payments/intasend/stk` - Start M-Pesa STK push
+- `POST /api/payments/intasend/webhook` - Payment status webhook
+- `POST /api/payments/intasend/verify` - Verify payment by tracking id
+
+### Affiliates
+- `POST /api/affiliates/register` - Register as an affiliate
+- `GET /api/affiliates/dashboard` - Affiliate earnings + stats
+- `GET /api/affiliates/links` - Referral links and banners
+- `POST /api/affiliates/payout` - Request M-Pesa payout
+- `GET /api/affiliates/payments` - Commission/payout history
 
 ### Admin (requires authentication)
 - `POST /api/admin/login` - Authenticate and get token
@@ -110,6 +432,9 @@ Admins can securely change their password through the admin portal:
 - `DELETE /api/admin/products/:id` - Delete product
 - `POST /api/admin/products/:id/image` - Upload product image
 - `DELETE /api/admin/products/:id/image` - Remove product image
+- `POST /api/admin/notify` - Send a test notification (email + browser push)
+- `GET /api/admin/notifications/check` - Poll for new orders since last check
+- `GET /api/admin/notifications/subscribe` - Register a device for web push
 
 ## Deployment
 
@@ -117,23 +442,36 @@ Admins can securely change their password through the admin portal:
 
 1. Push to GitHub
 2. Connect repository to Vercel
-3. Set the environment variable in Vercel dashboard:
+3. Set the environment variables in Vercel dashboard:
    ```
    DATABASE_URL=<your Supabase transaction pooler connection string with ?ssl=true>
    ADMIN_PASSWORD=YourSecurePassword123
+   INTASEND_PUBLISHABLE_KEY=is_pk_your_key
+   INTASEND_SECRET_KEY=is_sk_your_key
+   GOOGLE_CLIENT_ID=<optional>
+   GOOGLE_CLIENT_SECRET=<optional>
+   KEYCLOAK_URL=<optional>
+   KEYCLOAK_REALM=<optional>
+   KEYCLOAK_CLIENT_ID=<optional>
    ```
-4. Deploy
+4. Add the webhook URL in the IntaSend dashboard:
+   ```
+   https://your-domain.vercel.app/api/payments/intasend/webhook
+   ```
+5. Deploy
 
 The app is serverless-optimized with connection pooling and stateless authentication.
 
 ## Security Notes
 
 - All passwords are hashed with bcrypt (10 rounds)
-- Admin tokens use HMAC-SHA256 signatures
-- Tokens expire after 12 hours
-- Database passwords are never exposed in logs or responses
+- Admin tokens use HMAC-SHA256 signatures and expire after 12 hours
+- Customer SSO sessions use signed tokens/cookies with `httpOnly` and `SameSite`
+- IntaSend webhooks are verified by signature before order status is changed
+- Database passwords and secret keys are never exposed in logs or responses
 - SQL injection protected via parameterized queries
 - File uploads validated by type and size (10MB maximum)
+- Customer data is only collected with explicit consent (see the signup notice)
 
 ## License
 

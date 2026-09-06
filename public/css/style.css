@@ -426,6 +426,116 @@ img { max-width: 100%; display: block; }
 
 .lightbox-count { color: rgba(255, 255, 255, 0.85); font-size: 0.85rem; font-weight: 500; }
 
+/* ============ Affiliates ============ */
+
+.affiliates { padding: 56px 0 64px; }
+
+.aff-how {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px; margin-bottom: 28px;
+}
+
+.aff-step {
+  display: flex; gap: 12px; align-items: center;
+  background: var(--surface); border-radius: var(--radius); padding: 16px 18px;
+  box-shadow: var(--shadow); font-size: 0.92rem; color: var(--muted);
+}
+.aff-step strong { color: var(--ink); }
+
+.step-num {
+  flex-shrink: 0; width: 34px; height: 34px; border-radius: 50%;
+  background: var(--brand); color: #fff; font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
+}
+
+.aff-root { max-width: 760px; margin: 0 auto; }
+
+.auth-card {
+  background: var(--surface); border-radius: var(--radius); padding: 26px;
+  box-shadow: var(--shadow);
+}
+
+.auth-tabs { display: flex; gap: 8px; margin-bottom: 20px; }
+
+.aff-tab {
+  flex: 1; border: 1.5px solid var(--border); background: var(--surface);
+  color: var(--muted); padding: 10px; border-radius: 50px; cursor: pointer;
+  font-family: inherit; font-weight: 600; font-size: 0.92rem; transition: all 0.2s;
+}
+.aff-tab:hover { border-color: var(--brand); color: var(--brand); }
+.aff-tab.active { background: var(--ink); color: #fff; border-color: var(--ink); }
+
+.auth-card .form-note { text-align: center; }
+
+.aff-dash {
+  background: var(--surface); border-radius: var(--radius); padding: 26px;
+  box-shadow: var(--shadow);
+}
+
+.aff-dash-head {
+  display: flex; justify-content: space-between; align-items: flex-start;
+  flex-wrap: wrap; gap: 14px; margin-bottom: 20px;
+}
+.aff-dash-head h3 { font-size: 1.25rem; }
+
+.aff-stats {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 12px; margin-bottom: 22px;
+}
+
+.stat {
+  background: #f9fafb; border: 1px solid var(--border); border-radius: 12px;
+  padding: 14px 16px; text-align: center;
+}
+.stat span { display: block; font-size: 1.25rem; font-weight: 800; color: var(--ink); }
+.stat label { font-size: 0.75rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+.stat.highlight { background: #fff7ed; border-color: var(--brand-light); }
+.stat.highlight span { color: var(--brand-dark); }
+
+.aff-share { margin-bottom: 18px; }
+.aff-share label { font-size: 0.85rem; font-weight: 600; }
+.aff-share > label { display: block; margin-bottom: 8px; }
+
+.ref-row { display: flex; gap: 10px; margin-bottom: 12px; }
+.ref-row input {
+  flex: 1; min-width: 0; padding: 11px 14px; border: 1.5px solid var(--border);
+  border-radius: 10px; font-family: inherit; font-size: 0.9rem; background: #f9fafb;
+}
+.ref-row input:focus { outline: none; border-color: var(--brand); }
+
+.share-row { display: flex; gap: 8px; flex-wrap: wrap; }
+
+.share-chip {
+  display: inline-block; background: #f9fafb; border: 1px solid var(--border);
+  color: var(--ink); padding: 8px 14px; border-radius: 50px; font-size: 0.85rem;
+  font-weight: 600; transition: all 0.2s;
+}
+.share-chip:hover { border-color: var(--brand); color: var(--brand); }
+
+.aff-cta {
+  display: flex; justify-content: space-between; align-items: center; gap: 14px;
+  flex-wrap: wrap; background: #fff7ed; border: 1px solid var(--brand-light);
+  border-radius: 12px; padding: 14px 18px; margin-bottom: 20px;
+}
+.aff-cta p { color: var(--muted); font-size: 0.9rem; }
+
+.aff-table { margin-top: 18px; overflow-x: auto; }
+.aff-table h4 { margin-bottom: 8px; font-size: 1rem; }
+
+.aff-table table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+.aff-table th, .aff-table td {
+  text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--border);
+}
+.aff-table th { color: var(--muted); font-weight: 600; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.05em; }
+
+.aff-badge {
+  display: inline-block; padding: 3px 10px; border-radius: 50px; font-size: 0.72rem;
+  font-weight: 700;
+}
+.aff-badge.earned, .aff-badge.paid { background: #d1fae5; color: var(--accent); }
+.aff-badge.pending, .aff-badge.requested { background: #fef3c7; color: #b45309; }
+.aff-badge.void, .aff-badge.rejected { background: #fee2e2; color: var(--danger); }
+
 /* ============ Toast ============ */
 
 .toast {
