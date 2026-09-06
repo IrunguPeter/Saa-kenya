@@ -12,6 +12,39 @@ const db = require('./db');
 const app = express();
 app.use(express.json({ limit: '10kb' }));
 app.use(cookieParser());
+
+// Capture ?ref=CODE referral links: set a persistent referral cookie, bump the
+// affiliate's click counter, then redirect to the clean URL so the code only
+// appears once in the address bar.
+app.use((req, res, next) => {
+  const ref = typeof req.query.ref === 'string' ? req.query.ref.trim().slice(0, 30) : '';
+  if (req.method !== 'GET' || !ref) return next();
+  if (String(req.path || req.url).startsWith('/api')) return next();
+  (async () => {
+    try {
+      const [rows] = await db.query(
+        'SELECT id FROM affiliates WHERE code = ? AND status = ? LIMIT 1',
+        [ref, 'active']
+      );
+      const clean = String(req.originalUrl || req.url).split('?')[0] || '/';
+      if (rows.length === 0) return res.redirect(302, clean);
+      const isNew = !(req.cookies && req.cookies.saa_ref === ref);
+      res.cookie('saa_ref', ref, {
+        httpOnly: true,
+        sameSite: 'Lax',
+        secure: process.env.NODE_ENV === 'production',
+        maxAge: AFFILIATE_COOKIE_DAYS * 24 * 60 * 60 * 1000,
+      });
+      if (isNew) {
+        await db.query('UPDATE affiliates SET clicks = clicks + 1 WHERE id = ?', [rows[0].id]);
+      }
+      res.redirect(302, clean);
+    } catch (err) {
+      next(err);
+    }
+  })();
+});
+
 app.use(express.static(path.join(__dirname, 'public')));
 
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
@@ -22,6 +55,16 @@ if (!ADMIN_PASSWORD) {
 }
 
 const TOKEN_TTL_MS = 1000 * 60 * 60 * 12; // 12 hours
+
+// ---------------- Affiliate program config ----------------
+
+const AFFILIATE_SECRET = process.env.AFFILIATE_SECRET || ADMIN_PASSWORD;
+const AFFILIATE_COMMISSION_RATE = Math.min(
+  1,
+  Math.max(0, Number(process.env.AFFILIATE_COMMISSION_RATE) || 0.1)
+);
+const AFFILIATE_COOKIE_DAYS = Math.max(1, Number(process.env.AFFILIATE_COOKIE_DAYS) || 30);
+const AFFILIATE_MIN_PAYOUT = Math.max(0, Number(process.env.AFFILIATE_MIN_PAYOUT) || 500);
 
 // ---------------- Security headers ----------------
 
@@ -171,6 +214,65 @@ function requireAdmin(req, res, next) {
     }
   })();
 }
+
+// ---------------- Affiliate auth helpers ----------------
+
+function makeAffToken(id) {
+  const payload = `${id}.${Date.now()}`;
+  const sig = crypto
+    .createHmac('sha256', AFFILIATE_SECRET)
+    .update(payload)
+    .digest('hex');
+  return `${payload}.${sig}`;
+}
+
+function verifyAffToken(token) {
+  if (typeof token !== 'string') return null;
+  const [idStr, issuedAt, sig] = token.split('.');
+  const id = parseInt(idStr, 10);
+  const ts = parseInt(issuedAt, 10);
+  if (!Number.isInteger(id) || Number.isNaN(ts) || Date.now() - ts > TOKEN_TTL_MS) return null;
+  const expected = crypto
+    .createHmac('sha256', AFFILIATE_SECRET)
+    .update(`${idStr}.${issuedAt}`)
+    .digest('hex');
+  const a = Buffer.from(sig || '');
+  const b = Buffer.from(expected);
+  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return null;
+  return id;
+}
+
+async function requireAffiliate(req, res, next) {
+  const token =
+    (req.cookies && req.cookies.saa_aff_token) ||
+    (req.headers.authorization || '').replace(/^Bearer\s+/i, '');
+  const id = verifyAffToken(token);
+  if (!id) {
+    return res.status(401).json({ error: 'Please log in to the affiliate dashboard.' });
+  }
+  try {
+    const [rows] = await db.query(
+      'SELECT id, name, email, phone, code, clicks, status FROM affiliates WHERE id = ?',
+      [id]
+    );
+    if (rows.length === 0 || rows[0].status !== 'active') {
+      return res.status(401).json({ error: 'Affiliate account not found or inactive.' });
+    }
+    req.affiliate = rows[0];
+    next();
+  } catch (err) {
+    console.error('Affiliate auth error:', err.message);
+    res.status(500).json({ error: 'Something went wrong. Please try again.' });
+  }
+}
+
+const affiliateAuthLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 10,
+  message: { error: 'Too many attempts. Please try again later.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 
 // ---------------- Middleware helpers ----------------
 
@@ -441,6 +543,26 @@ app.post(
           line.quantity,
           line.product_id,
         ]);
+      }
+
+      // Credit a pending affiliate commission when the order was referred.
+      const refCode = (req.cookies && req.cookies.saa_ref) || null;
+      if (refCode) {
+        const [affRows] = await conn.query(
+          'SELECT id FROM affiliates WHERE code = ? AND status = ? LIMIT 1',
+          [refCode, 'active']
+        );
+        if (affRows.length > 0) {
+          const commission =
+            Math.round((total - deliveryFee) * AFFILIATE_COMMISSION_RATE * 100) / 100;
+          if (commission > 0) {
+            await conn.query(
+              `INSERT INTO affiliate_commissions (affiliate_id, order_id, order_ref, amount)
+               VALUES (?, ?, ?, ?)`,
+              [affRows[0].id, orderRes[0].id, ref, commission]
+            );
+          }
+        }
       }
 
       await conn.commit();
@@ -841,7 +963,269 @@ app.put(
     if (result.affectedRows === 0) {
       return res.status(404).json({ error: 'Order not found.' });
     }
+
+    // Reflect order status on any pending affiliate commission:
+    // delivered = money collected on delivery = commission earned.
+    if (status === 'delivered') {
+      await db.query(
+        `UPDATE affiliate_commissions SET status = 'earned', earned_at = CURRENT_TIMESTAMP
+         WHERE order_id = ? AND status = 'pending'`,
+        [id]
+      );
+    } else if (status === 'cancelled') {
+      await db.query(
+        `UPDATE affiliate_commissions SET status = 'void'
+         WHERE order_id = ? AND status = 'pending'`,
+        [id]
+      );
+    }
+
     res.json({ ok: true });
+  })
+);
+
+// ---------------- Affiliate program ----------------
+
+function affiliateReferralLink(req, code) {
+  const base = process.env.SITE_URL || `${req.protocol}://${req.get('host')}`;
+  return `${base.replace(/\/$/, '')}/?ref=${encodeURIComponent(code)}`;
+}
+
+async function affiliateBalances(affiliateId) {
+  const [rows] = await db.query(
+    `SELECT
+       (SELECT COALESCE(SUM(amount), 0) FROM affiliate_commissions WHERE affiliate_id = ? AND status = 'earned') AS earned,
+       (SELECT COALESCE(SUM(amount), 0) FROM affiliate_commissions WHERE affiliate_id = ? AND status = 'pending') AS pending,
+       (SELECT COALESCE(SUM(amount), 0) FROM affiliate_payouts WHERE affiliate_id = ?) AS paid`,
+    [affiliateId, affiliateId, affiliateId]
+  );
+  return {
+    earned: Number(rows[0].earned),
+    pending: Number(rows[0].pending),
+    paid: Number(rows[0].paid),
+    available: Number(rows[0].earned) - Number(rows[0].paid),
+  };
+}
+
+app.post(
+  '/api/affiliates/register',
+  affiliateAuthLimiter,
+  asyncWrap(async (req, res) => {
+    const { name, email, phone, password } = req.body || {};
+
+    if (!name || !String(name).trim()) {
+      return res.status(400).json({ error: 'Please provide your full name.' });
+    }
+    if (!email || !/^\S+@\S+\.\S+$/.test(String(email))) {
+      return res.status(400).json({ error: 'Please provide a valid email address.' });
+    }
+    const phoneOk = /^(\+?254|0)\d{9}$/.test(String(phone).replace(/[\s-]/g, ''));
+    if (!phoneOk) {
+      return res.status(400).json({ error: 'Please enter a valid Kenyan phone number.' });
+    }
+    const strength = validatePasswordStrength(password);
+    if (!strength.valid) {
+      return res.status(400).json({ error: strength.error });
+    }
+
+    const hash = await hashPassword(password);
+    let code =
+      String(crypto.randomBytes(4).toString('hex')) +
+      String(Date.now()).slice(-4);
+
+    const conn = await db.getConnection();
+    try {
+      await conn.beginTransaction();
+      const [existing] = await conn.query('SELECT id FROM affiliates WHERE email = ?', [email]);
+      if (existing.length > 0) {
+        await conn.rollback();
+        conn.release();
+        return res.status(409).json({ error: 'An account with that email already exists. Please log in.' });
+      }
+      let inserted = false;
+      for (let attempt = 0; attempt < 3 && !inserted; attempt += 1) {
+        const [result] = await conn.query(
+          `INSERT INTO affiliates (name, email, phone, password_hash, code)
+           VALUES (?, ?, ?, ?, ?) ON CONFLICT (code) DO NOTHING`,
+          [String(name).trim(), String(email).trim(), String(phone).replace(/[\s-]/g, ''), hash, code]
+        );
+        if (result.affectedRows > 0) {
+          inserted = true;
+        } else {
+          code =
+            String(crypto.randomBytes(4).toString('hex')) +
+            String(Date.now()).slice(-4);
+        }
+      }
+      if (!inserted) {
+        await conn.rollback();
+        conn.release();
+        return res.status(500).json({ error: 'Could not generate a unique referral code. Try again.' });
+      }
+
+      const [rows] = await conn.query(
+        'SELECT id, name, email, phone, code FROM affiliates WHERE email = ?',
+        [email]
+      );
+      const aff = rows[0];
+      await conn.commit();
+      conn.release();
+
+      res.cookie('saa_aff_token', makeAffToken(aff.id), {
+        httpOnly: true,
+        sameSite: 'Strict',
+        secure: process.env.NODE_ENV === 'production',
+        maxAge: TOKEN_TTL_MS,
+      });
+      res.status(201).json({ affiliate: aff });
+    } catch (err) {
+      await conn.rollback();
+      conn.release();
+      throw err;
+    }
+  })
+);
+
+app.post(
+  '/api/affiliates/login',
+  affiliateAuthLimiter,
+  asyncWrap(async (req, res) => {
+    const { email, password } = req.body || {};
+    if (!email || !password) {
+      return res.status(401).json({ error: 'Email and password are required.' });
+    }
+    const [rows] = await db.query(
+      'SELECT id, name, email, phone, code, password_hash, status FROM affiliates WHERE email = ?',
+      [email]
+    );
+    if (rows.length === 0) {
+      return res.status(401).json({ error: 'Invalid email or password.' });
+    }
+    const aff = rows[0];
+    if (aff.status !== 'active') {
+      return res.status(401).json({ error: 'This affiliate account is inactive.' });
+    }
+    const ok = await verifyPassword(password, aff.password_hash);
+    if (!ok) {
+      return res.status(401).json({ error: 'Invalid email or password.' });
+    }
+    res.cookie('saa_aff_token', makeAffToken(aff.id), {
+      httpOnly: true,
+      sameSite: 'Strict',
+      secure: process.env.NODE_ENV === 'production',
+      maxAge: TOKEN_TTL_MS,
+    });
+    res.json({
+      affiliate: {
+        id: aff.id,
+        name: aff.name,
+        email: aff.email,
+        phone: aff.phone,
+        code: aff.code,
+      },
+    });
+  })
+);
+
+app.post('/api/affiliates/logout', (req, res) => {
+  res.clearCookie('saa_aff_token', {
+    httpOnly: true,
+    sameSite: 'Strict',
+    secure: process.env.NODE_ENV === 'production',
+  });
+  res.json({ ok: true });
+});
+
+app.get(
+  '/api/affiliates/dashboard',
+  requireAffiliate,
+  asyncWrap(async (req, res) => {
+    const id = req.affiliate.id;
+    const [stats] = await db.query(
+      `SELECT
+         (SELECT COUNT(*) FROM affiliate_commissions WHERE affiliate_id = ? AND status != 'void') AS conversions,
+         (SELECT COUNT(*) FROM affiliate_commissions WHERE affiliate_id = ? AND status = 'pending') AS pendingCount`,
+      [id, id]
+    );
+    const balances = await affiliateBalances(id);
+    const [commissions] = await db.query(
+      'SELECT order_ref, amount, status, created_at FROM affiliate_commissions WHERE affiliate_id = ? ORDER BY id DESC LIMIT 20',
+      [id]
+    );
+    const [payouts] = await db.query(
+      'SELECT amount, status, created_at FROM affiliate_payouts WHERE affiliate_id = ? ORDER BY id DESC LIMIT 10',
+      [id]
+    );
+    res.json({
+      affiliate: req.affiliate,
+      referralLink: affiliateReferralLink(req, req.affiliate.code),
+      clicks: req.affiliate.clicks,
+      conversions: Number(stats[0].conversions),
+      ...balances,
+      pendingCount: Number(stats[0].pendingCount),
+      rate: AFFILIATE_COMMISSION_RATE,
+      minPayout: AFFILIATE_MIN_PAYOUT,
+      commissions,
+      payouts,
+    });
+  })
+);
+
+app.get(
+  '/api/affiliates/links',
+  requireAffiliate,
+  asyncWrap(async (req, res) => {
+    const { code } = req.affiliate;
+    const link = affiliateReferralLink(req, code);
+    const shareText = `Get quality watches from just KSh 500 with nationwide delivery in Kenya! Shop via my link: ${link}`;
+    res.json({
+      referralLink: link,
+      shareText,
+      shareLinks: {
+        whatsapp: `https://wa.me/?text=${encodeURIComponent(shareText)}`,
+        x: `https://x.com/intent/tweet?text=${encodeURIComponent(shareText)}`,
+        facebook: `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(link)}`,
+        telegram: `https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent('Saa Kenya watches from KSh 500!')}`,
+      },
+    });
+  })
+);
+
+app.get(
+  '/api/affiliates/payments',
+  requireAffiliate,
+  asyncWrap(async (req, res) => {
+    const [payouts] = await db.query(
+      'SELECT id, amount, phone, status, created_at FROM affiliate_payouts WHERE affiliate_id = ? ORDER BY id DESC LIMIT 50',
+      [req.affiliate.id]
+    );
+    const balances = await affiliateBalances(req.affiliate.id);
+    res.json({ payouts, balances });
+  })
+);
+
+app.post(
+  '/api/affiliates/payout',
+  requireAffiliate,
+  asyncWrap(async (req, res) => {
+    const balances = await affiliateBalances(req.affiliate.id);
+    if (balances.available < AFFILIATE_MIN_PAYOUT) {
+      return res.status(400).json({
+        error: `Payouts require a balance of at least KSh ${AFFILIATE_MIN_PAYOUT.toLocaleString()}. Your available balance is KSh ${balances.available.toLocaleString()}.`,
+      });
+    }
+    const [result] = await db.query(
+      `INSERT INTO affiliate_payouts (affiliate_id, amount, phone) VALUES (?, ?, ?) RETURNING id`,
+      [req.affiliate.id, balances.available, req.affiliate.phone]
+    );
+    res.status(201).json({
+      ok: true,
+      payout: {
+        id: result[0].id,
+        amount: balances.available,
+        status: 'requested',
+      },
+    });
   })
 );
 

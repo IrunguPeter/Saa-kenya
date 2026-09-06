@@ -127,3 +127,51 @@ INSERT INTO products (name, description, price, category, stock, featured) VALUE
 -- ------------------------------------------------------------
 ALTER TABLE product_images DROP CONSTRAINT IF EXISTS product_images_product_id_key;
 ALTER TABLE product_images ADD COLUMN IF NOT EXISTS sort_order INT NOT NULL DEFAULT 0;
+
+-- ------------------------------------------------------------
+-- Affiliate program
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS affiliates (
+  id            SERIAL PRIMARY KEY,
+  name          VARCHAR(120) NOT NULL,
+  email         VARCHAR(120) NOT NULL UNIQUE,
+  phone         VARCHAR(30)  NOT NULL,
+  password_hash VARCHAR(255) NOT NULL,
+  code          VARCHAR(30)  NOT NULL UNIQUE,
+  clicks        INT          NOT NULL DEFAULT 0,
+  status        VARCHAR(20)  NOT NULL DEFAULT 'active'
+                CHECK (status IN ('active','suspended')),
+  created_at    TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- One commission per referred order. Created 'pending' when the order is
+-- placed, becomes 'earned' once the order is delivered (money collected on
+-- delivery) and 'void' if the order is cancelled.
+CREATE TABLE IF NOT EXISTS affiliate_commissions (
+  id           SERIAL PRIMARY KEY,
+  affiliate_id INT           NOT NULL,
+  order_id     INT           NOT NULL,
+  order_ref    VARCHAR(20)   NOT NULL,
+  amount       NUMERIC(10,2) NOT NULL,
+  status       VARCHAR(20)   NOT NULL DEFAULT 'pending'
+               CHECK (status IN ('pending','earned','void')),
+  created_at   TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  earned_at    TIMESTAMP     DEFAULT NULL,
+  CONSTRAINT fk_commission_affiliate
+    FOREIGN KEY (affiliate_id) REFERENCES affiliates(id) ON DELETE CASCADE,
+  CONSTRAINT fk_commission_order
+    FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS affiliate_payouts (
+  id           SERIAL PRIMARY KEY,
+  affiliate_id INT           NOT NULL,
+  amount       NUMERIC(10,2) NOT NULL,
+  phone        VARCHAR(30)   NOT NULL,
+  status       VARCHAR(20)   NOT NULL DEFAULT 'requested'
+               CHECK (status IN ('requested','paid','rejected')),
+  created_at   TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  paid_at      TIMESTAMP     DEFAULT NULL,
+  CONSTRAINT fk_payout_affiliate
+    FOREIGN KEY (affiliate_id) REFERENCES affiliates(id) ON DELETE CASCADE
+);
