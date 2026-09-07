@@ -8,6 +8,7 @@ const bcrypt = require('bcryptjs');
 const rateLimit = require('express-rate-limit');
 const cookieParser = require('cookie-parser');
 const db = require('./db');
+const notifications = require('./notifications');
 
 const app = express();
 app.use(express.json({ limit: '10kb' }));
@@ -566,6 +567,17 @@ app.post(
       }
 
       await conn.commit();
+
+      // Notify the admin (email + browser push) without blocking the response.
+      notifications
+        .notifyAdmin({
+          ref,
+          total,
+          deliveryFee,
+          customer: { full_name, phone, county, town, estate },
+          items: lines,
+        })
+        .catch((err) => console.error('Notification error:', err));
 
       res.status(201).json({
         order: {
@@ -1226,6 +1238,94 @@ app.post(
         status: 'requested',
       },
     });
+  })
+);
+
+// ---------------- Admin: push notification subscriptions ----------------
+
+const PUSH_SUBSCRIPTIONS_SQL = `
+  CREATE TABLE IF NOT EXISTS push_subscriptions (
+    id         SERIAL PRIMARY KEY,
+    endpoint   TEXT NOT NULL UNIQUE,
+    p256dh     TEXT NOT NULL,
+    auth       TEXT NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+  )`;
+
+// Public VAPID key so the browser can subscribe. The private key stays secret.
+app.get(
+  '/api/admin/notifications/vapid',
+  requireAdmin,
+  asyncWrap(async (req, res) => {
+    if (!notifications.webPushConfigured()) {
+      return res.status(503).json({
+        error: 'Push notifications are not configured on this server.',
+      });
+    }
+    res.json({ publicKey: process.env.WEB_PUSH_VAPID_PUBLIC_KEY });
+  })
+);
+
+app.post(
+  '/api/admin/notifications/subscribe',
+  requireAdmin,
+  asyncWrap(async (req, res) => {
+    const body = req.body || {};
+    const endpoint = body.endpoint;
+    const keys = body.keys || {};
+    const p256dh = body.p256dh || keys.p256dh || '';
+    const auth = body.auth || keys.auth || '';
+    if (!endpoint) {
+      return res.status(400).json({ error: 'Subscription endpoint is required.' });
+    }
+    if (!notifications.webPushConfigured()) {
+      return res.status(503).json({
+        error: 'Push notifications are not configured on this server.',
+      });
+    }
+    await db.query(PUSH_SUBSCRIPTIONS_SQL);
+    await db.query(
+      `INSERT INTO push_subscriptions (endpoint, p256dh, auth)
+       VALUES (?, ?, ?)
+       ON CONFLICT (endpoint) DO UPDATE SET p256dh = EXCLUDED.p256dh, auth = EXCLUDED.auth`,
+      [endpoint, p256dh, auth]
+    );
+    res.json({ ok: true });
+  })
+);
+
+app.delete(
+  '/api/admin/notifications/unsubscribe',
+  requireAdmin,
+  asyncWrap(async (req, res) => {
+    const { endpoint } = req.body || {};
+    if (!endpoint) return res.status(400).json({ error: 'Subscription endpoint is required.' });
+    await db.query(PUSH_SUBSCRIPTIONS_SQL);
+    await db.query('DELETE FROM push_subscriptions WHERE endpoint = ?', [endpoint]);
+    res.json({ ok: true });
+  })
+);
+
+// Send a test push to all subscribed admin devices (manual trigger in Settings).
+app.post(
+  '/api/admin/notifications/test',
+  requireAdmin,
+  asyncWrap(async (req, res) => {
+    if (!notifications.webPushConfigured()) {
+      return res.status(503).json({
+        error: 'Push notifications are not configured on this server.',
+      });
+    }
+    await db.query(PUSH_SUBSCRIPTIONS_SQL);
+    const testOrder = {
+      ref: 'SAA-TEST',
+      total: 0,
+      deliveryFee: 0,
+      customer: { full_name: 'Test', phone: '', county: '', town: '', estate: '' },
+      items: [{ product_name: 'Test notification', price: 0, quantity: 1 }],
+    };
+    await notifications.sendOrderPush(testOrder);
+    res.json({ ok: true });
   })
 );
 

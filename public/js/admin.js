@@ -71,6 +71,7 @@
     loadStats();
     loadProducts();
     loadOrders();
+    updateNotifStatus();
   }
 
   async function api(path, opts) {
@@ -734,6 +735,158 @@
       ${o.notes ? `<div class="order-notes">📝 ${escapeHtml(o.notes)}</div>` : ''}
     `;
     $('orderModal').hidden = false;
+  }
+
+  // ---------------- Notifications ----------------
+
+  let pushSubscription = null;
+
+  function notificationsSupported() {
+    return 'serviceWorker' in navigator && 'PushManager' in window;
+  }
+
+  async function urlB64ToUint8Array(base64String) {
+    const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+    const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+    const rawData = atob(base64);
+    const outputArray = new Uint8Array(rawData.length);
+    for (let i = 0; i < rawData.length; i++) {
+      outputArray[i] = rawData.charCodeAt(i);
+    }
+    return outputArray;
+  }
+
+  async function getVapidPublicKey() {
+    const data = await api('/api/admin/notifications/vapid', { headers: authHeaders() });
+    return data.publicKey;
+  }
+
+  async function subscribeToPush() {
+    if (!notificationsSupported()) throw new Error('This browser does not support web push.');
+    if (!('serviceWorker' in navigator)) throw new Error('Service workers are not supported.');
+
+    const reg = await navigator.serviceWorker.ready;
+    let sub = await reg.pushManager.getSubscription();
+    if (!sub) {
+      const publicKey = await getVapidPublicKey();
+      sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: await urlB64ToUint8Array(publicKey),
+      });
+    }
+    await api('/api/admin/notifications/subscribe', {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify(sub),
+    });
+    pushSubscription = sub;
+    return sub;
+  }
+
+  async function unsubscribeFromPush() {
+    if (pushSubscription) {
+      try {
+        await api('/api/admin/notifications/unsubscribe', {
+          method: 'DELETE',
+          headers: authHeaders(),
+          body: JSON.stringify({ endpoint: pushSubscription.endpoint }),
+        });
+        await pushSubscription.unsubscribe();
+      } catch (err) {
+        console.error(err);
+      }
+      pushSubscription = null;
+    }
+  }
+
+  async function updateNotifStatus() {
+    const el = $('notifStatus');
+    const errEl = $('notifError');
+    const enableBtn = $('enableNotifBtn');
+    if (!notificationsSupported()) {
+      el.textContent = 'Browser notifications are not supported in this browser.';
+      el.style.color = 'var(--error)';
+      enableBtn.disabled = true;
+      return;
+    }
+    try {
+      const reg = await navigator.serviceWorker.getRegistration();
+      const sub = reg ? await reg.pushManager.getSubscription() : null;
+      if (sub) {
+        pushSubscription = sub;
+        el.textContent = 'Browser notifications are enabled.';
+        el.style.color = 'var(--ok)';
+        enableBtn.textContent = 'Disable browser notifications';
+      } else {
+        el.textContent = 'Browser notifications are off.';
+        el.style.color = 'var(--muted)';
+        enableBtn.textContent = 'Enable browser notifications';
+      }
+    } catch (err) {
+      el.textContent = 'Browser notifications are off.';
+      el.style.color = 'var(--muted)';
+    }
+  }
+
+  $('enableNotifBtn').addEventListener('click', async () => {
+    const el = $('notifStatus');
+    const errEl = $('notifError');
+    errEl.hidden = true;
+    try {
+      if (pushSubscription) {
+        await unsubscribeFromPush();
+        el.textContent = 'Browser notifications are off.';
+        el.style.color = 'var(--muted)';
+        $('enableNotifBtn').textContent = 'Enable browser notifications';
+        toastMsg('Notifications disabled.');
+      } else {
+        if (Notification.permission === 'denied') {
+          throw new Error('Notifications are blocked. Enable them in your browser settings.');
+        }
+        if (Notification.permission === 'default') {
+          const granted = await Notification.requestPermission();
+          if (granted !== 'granted') {
+            el.textContent = 'Permission denied. Notifications stay off.';
+            el.style.color = 'var(--error)';
+            return;
+          }
+        }
+        const { pathname } = new URL('/sw.js', window.location.href);
+        if (!navigator.serviceWorker.controller) {
+          await navigator.serviceWorker.register(pathname);
+        }
+        await subscribeToPush();
+        el.textContent = 'Browser notifications are enabled.';
+        el.style.color = 'var(--ok)';
+        $('enableNotifBtn').textContent = 'Disable browser notifications';
+        toastMsg('Notifications enabled.');
+        sendLocalNotification('Notifications enabled', 'You will be alerted when a new order is placed.');
+      }
+    } catch (err) {
+      errEl.textContent = err.message || 'Could not enable notifications.';
+      errEl.hidden = false;
+    }
+  });
+
+  $('testNotifBtn').addEventListener('click', async () => {
+    const errEl = $('notifError');
+    errEl.hidden = true;
+    try {
+      await api('/api/admin/notifications/test', {
+        method: 'POST',
+        headers: authHeaders(),
+      });
+      toastMsg('Test notification sent.');
+    } catch (err) {
+      errEl.textContent = err.message || 'Could not send test notification.';
+      errEl.hidden = false;
+    }
+  });
+
+  function sendLocalNotification(title, body) {
+    if ('Notification' in window && Notification.permission === 'granted') {
+      new Notification(title, { body, icon: '/favicon.svg' });
+    }
   }
 
   // ---------------- Misc ----------------

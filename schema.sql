@@ -90,6 +90,17 @@ CREATE TABLE IF NOT EXISTS order_items (
     ON DELETE CASCADE
 );
 
+-- ------------------------------------------------------------
+-- Web push subscriptions (admin browser push notifications)
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS push_subscriptions (
+  id         SERIAL PRIMARY KEY,
+  endpoint   TEXT NOT NULL UNIQUE,
+  p256dh     TEXT NOT NULL,
+  auth       TEXT NOT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Keep updated_at current whenever admin_credentials changes.
 CREATE OR REPLACE FUNCTION set_updated_at() RETURNS trigger AS $$
 BEGIN

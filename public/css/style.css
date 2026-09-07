@@ -10,6 +10,8 @@
   --brand-light: #fbbf24;
   --accent: #059669;
   --danger: #dc2626;
+  --error: #dc2626;
+  --ok: #059669;
   --border: #e7e2d6;
   --radius: 14px;
   --shadow: 0 10px 30px rgba(31, 36, 48, 0.08);

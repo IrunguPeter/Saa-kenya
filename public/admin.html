@@ -159,8 +159,19 @@
          <button type="submit" class="btn btn-primary" id="savePasswordBtn">Change Password</button>
          <button type="reset" class="btn btn-ghost">Cancel</button>
        </div>
-       <p class="password-error" id="passwordError" hidden style="color: var(--error); margin-top: 1rem;"></p>
-      </form>
+<p class="password-error" id="passwordError" hidden style="color: var(--error); margin-top: 1rem;"></p>
+       </form>
+    </div>
+
+    <div class="card">
+      <h3>Order Notifications</h3>
+      <p class="hint-text">Get notified by email and browser push when a new order is placed.</p>
+      <div class="notif-status" id="notifStatus">Checking notification support...</div>
+      <div class="form-actions">
+        <button type="button" class="btn btn-primary" id="enableNotifBtn">Enable browser notifications</button>
+        <button type="button" class="btn btn-ghost" id="testNotifBtn">Send test notification</button>
+      </div>
+      <p id="notifError" hidden style="color: var(--error); margin-top: 1rem;"></p>
     </div>
   </section>
 
