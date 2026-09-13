@@ -3,253 +3,95 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Saa Kenya Admin</title>
+  <meta name="theme-color" content="#11130f" />
+  <title>Saa Kenya Admin — Command center</title>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=Playfair+Display:ital,wght@0,600;0,700;1,600&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="css/style.css" />
   <link rel="stylesheet" href="css/admin.css" />
 </head>
 <body class="admin-body">
-
-  <!-- ============ LOGIN ============ -->
   <div class="login-wrap" id="loginView">
+    <div class="login-atmosphere"><span></span><span></span><span></span></div>
     <form class="login-card" id="loginForm">
-      <div class="login-logo">🛠️</div>
-      <h1>Saa Kenya Admin</h1>
-      <p class="sub">Sign in to manage the store</p>
+      <div class="login-mark"><span>S</span><i>⌁</i></div>
+      <p class="kicker">Saa Kenya / private workspace</p>
+      <h1>Good to see you.</h1>
+      <p class="sub">Sign in to run the shop, keep stock healthy, and send every order on its way.</p>
       <div class="field">
         <label for="adminPassword">Admin password</label>
         <input type="password" id="adminPassword" name="password" required autofocus placeholder="Enter password" />
       </div>
-      <button type="submit" class="btn btn-primary btn-block" id="loginBtn">Sign In</button>
+      <button type="submit" class="btn btn-primary btn-block" id="loginBtn">Open command center <span>→</span></button>
       <p class="login-error" id="loginError" hidden></p>
       <a href="/" class="back-link">← Back to store</a>
     </form>
+    <div class="login-note"><span class="pulse-dot"></span> Your shop, in good hands.</div>
   </div>
 
-  <!-- ============ DASHBOARD ============ -->
   <div class="admin-app" id="adminView" hidden>
-    <header class="admin-topbar">
-      <div class="container admin-topbar-inner">
-        <a href="/" class="brand">
-          <span class="brand-icon">⌚</span>
-          <span class="brand-name">Saa<span>Kenya</span> <em class="admin-tag">Admin</em></span>
-        </a>
-        <nav class="admin-nav">
-          <button class="tab-btn active" data-tab="dashboard">Dashboard</button>
-          <button class="tab-btn" data-tab="products">Products</button>
-          <button class="tab-btn" data-tab="orders">Orders</button>
-          <button class="tab-btn" data-tab="settings">Settings</button>
-        </nav>
-        <button class="btn btn-ghost btn-sm" id="logoutBtn">Log out</button>
-      </div>
-    </header>
+    <aside class="admin-sidebar">
+      <a href="/" class="admin-brand"><span class="brand-orb">S</span><span><b>Saa Kenya</b><small>Operations</small></span></a>
+      <div class="workspace-pill"><span class="pulse-dot"></span><span><b>Live workspace</b><small>All systems nominal</small></span></div>
+      <nav class="side-nav" aria-label="Admin navigation">
+        <p class="side-label">Workspace</p>
+        <button class="tab-btn active" data-tab="dashboard"><span class="nav-icon">⌂</span> Overview</button>
+        <button class="tab-btn" data-tab="products"><span class="nav-icon">◫</span> Products <span class="nav-arrow">→</span></button>
+        <button class="tab-btn" data-tab="orders"><span class="nav-icon">↗</span> Orders <span class="nav-arrow">→</span></button>
+        <p class="side-label side-label-spaced">Manage</p>
+        <button class="tab-btn" data-tab="settings"><span class="nav-icon">◌</span> Settings</button>
+      </nav>
+      <div class="sidebar-bottom"><div class="sidebar-tip"><span class="tip-spark">✦</span><b>Keep the momentum.</b><small>Healthy stock turns into happy wrists.</small></div><a href="/" class="store-link">Open storefront <span>↗</span></a><button class="logout-link" id="logoutBtn">Log out <span>↗</span></button></div>
+    </aside>
 
-    <main class="container admin-main">
-      <!-- Dashboard tab -->
-      <section class="tab-panel" id="panel-dashboard">
-        <div class="stats-grid" id="statsGrid">
-          <div class="stat-card"><span class="stat-icon">📦</span><div><div class="stat-label">Products</div><div class="stat-value" id="statProducts">–</div></div></div>
-          <div class="stat-card"><span class="stat-icon">🧾</span><div><div class="stat-label">Total orders</div><div class="stat-value" id="statOrders">–</div></div></div>
-          <div class="stat-card"><span class="stat-icon">⏳</span><div><div class="stat-label">Pending</div><div class="stat-value" id="statPending">–</div></div></div>
-          <div class="stat-card"><span class="stat-icon">💰</span><div><div class="stat-label">Revenue (excl. cancelled)</div><div class="stat-value" id="statRevenue">–</div></div></div>
-          <div class="stat-card"><span class="stat-icon">⚠️</span><div><div class="stat-label">Low stock (≤5)</div><div class="stat-value" id="statLowStock">–</div></div></div>
-        </div>
-        <div class="card-info quick-links">
-          <h3>Quick actions</h3>
-          <div class="quick-actions">
-            <button class="btn btn-primary" data-goto="products">Manage products</button>
-            <button class="btn btn-ghost" data-goto="orders">View orders</button>
-            <a href="/" class="btn btn-ghost">Open storefront</a>
+    <div class="admin-content">
+      <header class="admin-topbar">
+        <div><p class="kicker">Sunday, 13 September 2026</p><h2 id="pageHeading">Good morning, shopkeeper.</h2></div>
+        <div class="topbar-actions"><div class="topbar-status"><span class="pulse-dot"></span> Store is live</div><button class="avatar-button" title="Admin account">SK</button></div>
+      </header>
+      <main class="admin-main">
+        <section class="tab-panel" id="panel-dashboard">
+          <div class="dashboard-hero"><div><p class="kicker accent-kicker">Your command center</p><h1>Make today<br /><em>count.</em></h1><p>Stay close to what’s moving, what needs attention, and where the next good sale is coming from.</p></div><div class="hero-orbit"><span class="orbit-ring"></span><span class="orbit-watch">⌚</span><span class="orbit-label">Time well<br /><b>managed.</b></span></div></div>
+          <div class="stats-grid" id="statsGrid">
+            <div class="stat-card stat-revenue"><div class="stat-card-top"><span class="stat-label">Revenue / all time</span><span class="stat-glyph">↗</span></div><div class="stat-value" id="statRevenue">–</div><div class="stat-foot"><span class="trend-up">↑ on track</span><span>excl. cancelled</span></div><div class="spark-bars"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div></div>
+            <div class="stat-card"><div class="stat-card-top"><span class="stat-label">Total orders</span><span class="stat-glyph">↗</span></div><div class="stat-value" id="statOrders">–</div><div class="stat-foot"><span>Across the shop</span></div></div>
+            <div class="stat-card"><div class="stat-card-top"><span class="stat-label">Pending now</span><span class="stat-glyph stat-glyph-warm">!</span></div><div class="stat-value" id="statPending">–</div><div class="stat-foot"><span>Ready for your attention</span></div></div>
+            <div class="stat-card"><div class="stat-card-top"><span class="stat-label">Products live</span><span class="stat-glyph">◫</span></div><div class="stat-value" id="statProducts">–</div><div class="stat-foot"><span>Catalogued watches</span></div></div>
+            <div class="stat-card stat-stock"><div class="stat-card-top"><span class="stat-label">Low stock</span><span class="stat-glyph stat-glyph-alert">!</span></div><div class="stat-value" id="statLowStock">–</div><div class="stat-foot"><span>At or below 5 units</span></div></div>
           </div>
-        </div>
-      </section>
+          <div class="dashboard-grid">
+            <section class="insight-card pipeline-card"><div class="card-heading"><div><p class="kicker">Fulfillment pulse</p><h3>Move every order forward.</h3></div><span class="card-menu">•••</span></div><div class="pipeline"><div><span class="pipeline-dot pending"></span><b>Pending</b><small>Needs review</small></div><div class="pipeline-line"></div><div><span class="pipeline-dot confirmed"></span><b>Confirmed</b><small>Payment received</small></div><div class="pipeline-line"></div><div><span class="pipeline-dot shipped"></span><b>Shipped</b><small>On the way</small></div><div class="pipeline-line"></div><div><span class="pipeline-dot delivered"></span><b>Delivered</b><small>Happy customer</small></div></div><button class="text-action" data-goto="orders">Open order flow <span>→</span></button></section>
+            <section class="insight-card health-card"><div class="card-heading"><div><p class="kicker">Stock health</p><h3>Keep the good ones moving.</h3></div><span class="health-score">92%</span></div><div class="health-meter"><span></span></div><div class="health-copy"><span><i class="legend-dot green"></i> Healthy catalog</span><span><i class="legend-dot amber"></i> Low stock</span><span><i class="legend-dot red"></i> Out of stock</span></div><button class="text-action" data-goto="products">Review inventory <span>→</span></button></section>
+            <section class="insight-card action-card"><div class="card-heading"><div><p class="kicker">Quick actions</p><h3>Small moves, big rhythm.</h3></div><span class="action-spark">✦</span></div><button class="action-tile" data-goto="products"><span class="tile-icon">+</span><span><b>Add a new watch</b><small>Bring something good to the shelf</small></span><span>→</span></button><button class="action-tile" data-goto="orders"><span class="tile-icon">↗</span><span><b>Check latest orders</b><small>Keep delivery promises</small></span><span>→</span></button><a class="action-tile" href="/"><span class="tile-icon">◉</span><span><b>View your storefront</b><small>See the customer experience</small></span><span>↗</span></a></section>
+          </div>
+          <section class="quote-strip"><span class="quote-mark">“</span><p>Good business is just good attention, repeated daily.</p><span class="quote-credit">— Saa Kenya field note / 01</span></section>
+        </section>
 
-      <!-- Products tab -->
-      <section class="tab-panel" id="panel-products" hidden>
-        <div class="panel-head">
-          <h2>Products</h2>
-          <button class="btn btn-primary" id="newProductBtn">+ Add product</button>
-        </div>
-        <div class="search-box">
-          <input type="search" id="adminSearch" placeholder="Search products..." aria-label="Search products" />
-        </div>
-        <div class="table-wrap">
-          <table class="data-table">
-            <thead>
-              <tr>
-                <th>ID</th>
-                <th>Product</th>
-                <th>Category</th>
-                <th>Price</th>
-                <th>Stock</th>
-                <th>Featured</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody id="adminProductRows">
-              <tr><td colspan="7" class="loading-row">Loading...</td></tr>
-            </tbody>
-          </table>
-        </div>
-      </section>
+        <section class="tab-panel" id="panel-products" hidden>
+          <div class="section-banner"><div><p class="kicker accent-kicker">The catalog</p><h1>Products<span class="period">.</span></h1><p>Make the shelf feel full of possibility.</p></div><button class="btn btn-primary" id="newProductBtn">+ Add product</button></div>
+          <div class="panel-tools"><div class="search-box"><span>⌕</span><input type="search" id="adminSearch" placeholder="Search products, categories, descriptions..." aria-label="Search products" /></div><div class="panel-meta"><span class="mini-live"></span> Live catalog <span class="tool-divider"></span> Price range KSh 500–5,000</div></div>
+          <div class="table-wrap"><table class="data-table"><thead><tr><th>ID</th><th>Product</th><th>Category</th><th>Price</th><th>Stock</th><th>Featured</th><th>Actions</th></tr></thead><tbody id="adminProductRows"><tr><td colspan="7" class="loading-row">Loading your catalog...</td></tr></tbody></table></div>
+        </section>
 
-      <!-- Orders tab -->
-      <section class="tab-panel" id="panel-orders" hidden>
-        <div class="panel-head">
-          <h2>Orders</h2>
-        </div>
-        <div class="table-wrap">
-          <table class="data-table">
-            <thead>
-              <tr>
-                <th>Ref</th>
-                <th>Customer</th>
-                <th>Location</th>
-                <th>Total</th>
-                <th>Status</th>
-                <th>Date</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody id="adminOrderRows">
-              <tr><td colspan="7" class="loading-row">Loading...</td></tr>
-            </tbody>
-          </table>
-        </div>
-      </section>
-    </main>
-  </div>
+        <section class="tab-panel" id="panel-orders" hidden>
+          <div class="section-banner"><div><p class="kicker accent-kicker">The order desk</p><h1>Orders<span class="period">.</span></h1><p>Every confirmed order is a promise in motion.</p></div><div class="order-summary-chip"><span class="pulse-dot"></span><b>Live updates</b><small>Refreshes as orders arrive</small></div></div>
+          <div class="order-tabs"><span class="order-tab active">All orders</span><span class="order-tab">Pending review</span><span class="order-tab">In fulfillment</span><span class="order-tab">Delivered</span></div>
+          <div class="table-wrap"><table class="data-table"><thead><tr><th>Ref</th><th>Customer</th><th>Location</th><th>Total</th><th>Status</th><th>Date</th><th></th></tr></thead><tbody id="adminOrderRows"><tr><td colspan="7" class="loading-row">Loading the order desk...</td></tr></tbody></table></div>
+        </section>
 
-  <!-- ============ SETTINGS TAB ============ -->
-  <section class="tab-panel" id="panel-settings" hidden>
-    <div class="panel-head">
-      <h2>Settings</h2>
-    </div>
-    <div class="card">
-      <h3>Change Admin Password</h3>
-      <p class="hint-text">Update your admin password to keep your account secure.</p>
-      <form id="passwordForm" novalidate>
-       <div class="form-grid">
-         <div class="field full">
-           <label for="pw_current">Current password *</label>
-           <input type="password" id="pw_current" required placeholder="Enter current password" />
-         </div>
-         <div class="field full">
-           <label for="pw_new">New password *</label>
-           <input type="password" id="pw_new" required placeholder="At least 8 chars with letters, numbers, and uppercase" />
-         </div>
-         <div class="field full">
-           <label for="pw_confirm">Confirm new password *</label>
-           <input type="password" id="pw_confirm" required placeholder="Re-enter new password" />
-         </div>
-       </div>
-       <div class="password-hints">
-         <p class="hint-text">Password requirements:</p>
-         <ul>
-           <li>At least 8 characters</li>
-           <li>Must contain uppercase letters (A-Z)</li>
-           <li>Must contain lowercase letters (a-z)</li>
-           <li>Must contain numbers (0-9)</li>
-         </ul>
-       </div>
-       <div class="form-actions">
-         <button type="submit" class="btn btn-primary" id="savePasswordBtn">Change Password</button>
-         <button type="reset" class="btn btn-ghost">Cancel</button>
-       </div>
-<p class="password-error" id="passwordError" hidden style="color: var(--error); margin-top: 1rem;"></p>
-       </form>
-    </div>
-
-    <div class="card">
-      <h3>Order Notifications</h3>
-      <p class="hint-text">Get notified by email and browser push when a new order is placed.</p>
-      <div class="notif-status" id="notifStatus">Checking notification support...</div>
-      <div class="form-actions">
-        <button type="button" class="btn btn-primary" id="enableNotifBtn">Enable browser notifications</button>
-        <button type="button" class="btn btn-ghost" id="testNotifBtn">Send test notification</button>
-      </div>
-      <p id="notifError" hidden style="color: var(--error); margin-top: 1rem;"></p>
-    </div>
-  </section>
-
-  <!-- ============ PRODUCT MODAL ============ -->
-  <div class="modal-overlay" id="productModal" hidden>
-    <div class="modal">
-      <div class="modal-head">
-        <h3 id="productModalTitle">Add product</h3>
-        <button class="icon-btn" id="closeProductModal">✕</button>
-      </div>
-      <form id="productForm" novalidate>
-        <input type="hidden" id="p_id" />
-        <div class="form-grid">
-          <div class="field full">
-            <label for="p_name">Name *</label>
-            <input type="text" id="p_name" required maxlength="120" placeholder="e.g. Tempo Classic Leather Watch" />
-          </div>
-          <div class="field full">
-            <label for="p_description">Description *</label>
-            <textarea id="p_description" required rows="3" placeholder="Short description..."></textarea>
-          </div>
-          <div class="field">
-            <label for="p_price">Price (KSh) *</label>
-            <input type="number" id="p_price" required min="500" max="5000" step="50" placeholder="500 – 5000" />
-          </div>
-          <div class="field">
-            <label for="p_category">Category</label>
-            <select id="p_category">
-              <option>Men</option>
-              <option>Women</option>
-              <option>Kids</option>
-              <option>Smart</option>
-              <option>Unisex</option>
-            </select>
-          </div>
-          <div class="field">
-            <label for="p_stock">Stock</label>
-            <input type="number" id="p_stock" min="0" step="1" value="0" />
-          </div>
-          <div class="field">
-            <label for="p_featured">Featured</label>
-            <select id="p_featured">
-              <option value="0">No</option>
-              <option value="1">Yes</option>
-            </select>
-          </div>
-          <div class="field full">
-            <label for="p_image_url">Main image URL (optional)</label>
-            <input type="text" id="p_image_url" placeholder="https://... (used when no photos are uploaded)" />
-          </div>
-          <div class="field full">
-            <label>Watch photos (multiple)</label>
-            <div class="img-gallery" id="img_gallery"></div>
-            <div class="img-upload-controls">
-              <input type="file" id="p_image_files" accept="image/jpeg,image/png,image/webp,image/gif" multiple />
-              <p class="hint">Select one or more JPG/PNG/WebP/GIF photos (up to 10MB each). On the store, customers swipe to cycle through them on mobile.</p>
-            </div>
-          </div>
-        </div>
-        <button type="submit" class="btn btn-primary btn-block" id="saveProductBtn">Save product</button>
-      </form>
+        <section class="tab-panel" id="panel-settings" hidden>
+          <div class="section-banner"><div><p class="kicker accent-kicker">Workspace preferences</p><h1>Settings<span class="period">.</span></h1><p>Keep the back office secure and in sync.</p></div></div>
+          <div class="settings-grid"><div class="card settings-card"><div class="settings-icon">⌁</div><h3>Change admin password</h3><p class="hint-text">Update your admin password to keep your command center secure.</p><form id="passwordForm" novalidate><div class="form-grid"><div class="field full"><label for="pw_current">Current password *</label><input type="password" id="pw_current" required placeholder="Enter current password" /></div><div class="field full"><label for="pw_new">New password *</label><input type="password" id="pw_new" required placeholder="At least 8 chars with letters, numbers, and uppercase" /></div><div class="field full"><label for="pw_confirm">Confirm new password *</label><input type="password" id="pw_confirm" required placeholder="Re-enter new password" /></div></div><div class="password-hints"><p class="hint-text">Password requirements</p><ul><li>At least 8 characters</li><li>Uppercase, lowercase, and numbers</li></ul></div><div class="form-actions"><button type="submit" class="btn btn-primary" id="savePasswordBtn">Change password</button><button type="reset" class="btn btn-ghost">Cancel</button></div><p class="password-error" id="passwordError" hidden></p></form></div><div class="card settings-card"><div class="settings-icon">◌</div><h3>Order notifications</h3><p class="hint-text">Get notified by email and browser push when a new order is placed.</p><div class="notif-status" id="notifStatus">Checking notification support...</div><div class="form-actions"><button type="button" class="btn btn-primary" id="enableNotifBtn">Enable notifications</button><button type="button" class="btn btn-ghost" id="testNotifBtn">Send test</button></div><p id="notifError" hidden></p></div></div>
+        </section>
+      </main>
     </div>
   </div>
 
-  <!-- ============ ORDER DETAIL MODAL ============ -->
-  <div class="modal-overlay" id="orderModal" hidden>
-    <div class="modal">
-      <div class="modal-head">
-        <h3>Order <span id="orderRef"></span></h3>
-        <button class="icon-btn" id="closeOrderModal">✕</button>
-      </div>
-      <div id="orderDetailBody"></div>
-    </div>
-  </div>
-
-  <!-- ============ TOAST ============ -->
+  <div class="modal-overlay" id="productModal" hidden><div class="modal"><div class="modal-head"><div><p class="kicker">Catalog edit</p><h3 id="productModalTitle">Add product</h3></div><button class="icon-btn" id="closeProductModal">✕</button></div><form id="productForm" novalidate><input type="hidden" id="p_id" /><div class="form-grid"><div class="field full"><label for="p_name">Name *</label><input type="text" id="p_name" required maxlength="120" placeholder="e.g. Tempo Classic Leather Watch" /></div><div class="field full"><label for="p_description">Description *</label><textarea id="p_description" required rows="3" placeholder="Short description..."></textarea></div><div class="field"><label for="p_price">Price (KSh) *</label><input type="number" id="p_price" required min="500" max="5000" step="50" placeholder="500 – 5000" /></div><div class="field"><label for="p_category">Category</label><select id="p_category"><option>Men</option><option>Women</option><option>Kids</option><option>Smart</option><option>Unisex</option></select></div><div class="field"><label for="p_stock">Stock</label><input type="number" id="p_stock" min="0" step="1" value="0" /></div><div class="field"><label for="p_featured">Featured</label><select id="p_featured"><option value="0">No</option><option value="1">Yes</option></select></div><div class="field full"><label for="p_image_url">Main image URL (optional)</label><input type="text" id="p_image_url" placeholder="https://... (used when no photos are uploaded)" /></div><div class="field full"><label>Watch photos (multiple)</label><div class="img-gallery" id="img_gallery"></div><div class="img-upload-controls"><input type="file" id="p_image_files" accept="image/jpeg,image/png,image/webp,image/gif" multiple /><p class="hint">Select one or more JPG/PNG/WebP/GIF photos (up to 10MB each). Customers can swipe through them on mobile.</p></div></div></div><button type="submit" class="btn btn-primary btn-block" id="saveProductBtn">Save product</button></form></div></div>
+  <div class="modal-overlay" id="orderModal" hidden><div class="modal"><div class="modal-head"><div><p class="kicker">Order detail</p><h3>Order <span id="orderRef"></span></h3></div><button class="icon-btn" id="closeOrderModal">✕</button></div><div id="orderDetailBody"></div></div></div>
   <div class="toast" id="toast" hidden></div>
-
   <script src="js/admin.js"></script>
 </body>
 </html>
