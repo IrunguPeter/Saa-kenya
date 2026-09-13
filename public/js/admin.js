@@ -177,24 +177,24 @@
 
   // ---------------- Tabs ----------------
 
-  document.querySelectorAll('.tab-btn').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      document.querySelectorAll('.tab-btn').forEach((b) => b.classList.remove('active'));
-      btn.classList.add('active');
-      document.querySelectorAll('.tab-panel').forEach((p) => (p.hidden = true));
-      $('panel-' + btn.dataset.tab).hidden = false;
+  function activateTab(tab) {
+    document.querySelectorAll('.tab-btn').forEach((b) => {
+      b.classList.toggle('active', b.dataset.tab === tab);
     });
+    document.querySelectorAll('.tab-panel').forEach((p) => (p.hidden = true));
+    $('panel-' + tab).hidden = false;
+    if (tab === 'dashboard') loadStats();
+    if (tab === 'products') loadProducts();
+    if (tab === 'orders') loadOrders();
+    if (tab === 'settings') updateNotifStatus();
+  }
+
+  document.querySelectorAll('.tab-btn').forEach((btn) => {
+    btn.addEventListener('click', () => activateTab(btn.dataset.tab));
   });
 
   document.querySelectorAll('[data-goto]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const tab = btn.dataset.goto;
-      document.querySelectorAll('.tab-btn').forEach((b) => {
-        b.classList.toggle('active', b.dataset.tab === tab);
-      });
-      document.querySelectorAll('.tab-panel').forEach((p) => (p.hidden = true));
-      $('panel-' + tab).hidden = false;
-    });
+    btn.addEventListener('click', () => activateTab(btn.dataset.goto));
   });
 
   // ---------------- Stats ----------------
