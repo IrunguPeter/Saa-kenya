@@ -1,7 +1,8 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
+  "buildCommand": "npm run build",
   "functions": {
-    "api/index.js": { "maxDuration": 10 }
+    "api/index.js": { "maxDuration": 10, "includeFiles": "storefront/dist/**" }
   },
   "rewrites": [
     { "source": "/(.*)", "destination": "/api/index" }

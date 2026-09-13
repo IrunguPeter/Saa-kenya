@@ -1,6 +1,11 @@
 # dependencies
 /node_modules
 
+# storefront (React app) deps + build output
+/storefront/node_modules
+/storefront/dist
+/storefront/*.tsbuildinfo
+
 # local env files
 .env
 .env*.local

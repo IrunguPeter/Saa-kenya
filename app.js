@@ -46,13 +46,16 @@ app.use((req, res, next) => {
   })();
 });
 
+// React storefront (built from storefront/) is served from storefront/dist/public.
+// Mounted before public/ so the root path resolves to the new storefront.
+const STOREFRONT_DIR = path.join(__dirname, 'storefront', 'dist', 'public');
+
+app.use(express.static(STOREFRONT_DIR));
 app.use(express.static(path.join(__dirname, 'public')));
 
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
 if (!ADMIN_PASSWORD) {
-  console.error('FATAL: ADMIN_PASSWORD environment variable is required.');
-  console.error('Set ADMIN_PASSWORD in .env before starting the server.');
-  process.exit(1);
+  console.error('WARNING: ADMIN_PASSWORD is not set. Admin login will be unavailable until it is configured.');
 }
 
 const TOKEN_TTL_MS = 1000 * 60 * 60 * 12; // 12 hours
@@ -1332,6 +1335,9 @@ app.post(
 // ---------------- Errors ----------------
 
 app.use((req, res) => {
+  if (!req.path.startsWith('/api') && req.accepts('html')) {
+    return res.sendFile(path.join(STOREFRONT_DIR, 'index.html'));
+  }
   res.status(404).json({ error: 'Not found.' });
 });
 

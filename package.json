@@ -6,6 +6,7 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js",
+    "build": "npm --prefix storefront install --no-audit --no-fund && npm --prefix storefront run build",
     "setup-db": "bash setup.sh"
   },
   "keywords": [
