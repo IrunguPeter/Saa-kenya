@@ -71,7 +71,9 @@
     loadStats();
     loadProducts();
     loadOrders();
+    loadFinance();
     updateNotifStatus();
+    loadAdminTeam();
   }
 
   async function api(path, opts) {
@@ -101,7 +103,7 @@
       const data = await api('/api/admin/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password: $('adminPassword').value }),
+        body: JSON.stringify({ username: $('adminUsername').value.trim(), password: $('adminPassword').value }),
       });
       $('loginForm').reset();
       showAdmin();
@@ -110,7 +112,7 @@
       errEl.hidden = false;
     } finally {
       btn.disabled = false;
-      btn.textContent = 'Sign In';
+      btn.textContent = 'Open command center →';
     }
   });
 
@@ -186,7 +188,8 @@
     if (tab === 'dashboard') loadStats();
     if (tab === 'products') loadProducts();
     if (tab === 'orders') loadOrders();
-    if (tab === 'settings') updateNotifStatus();
+    if (tab === 'settings') { updateNotifStatus(); loadAdminTeam(); }
+    if (tab === 'finance') loadFinance();
   }
 
   document.querySelectorAll('.tab-btn').forEach((btn) => {
@@ -246,7 +249,7 @@
           </div>
         </td>
         <td>${escapeHtml(p.category)}</td>
-        <td class="price-cell">${formatKSh(p.price)}</td>
+        <td class="price-cell">${formatKSh(p.price)}<small class="table-sub">cost ${formatKSh(p.cost_price || 0)}</small></td>
         <td>
           <span class="stock-badge ${p.stock <= 0 ? 'stock-out' : p.stock <= 5 ? 'stock-low' : 'stock-in'}">
             ${p.stock <= 0 ? 'Out' : p.stock <= 5 ? 'Low' : 'In stock'} (${p.stock})
@@ -292,6 +295,7 @@
     $('p_name').value = product ? product.name : '';
     $('p_description').value = product ? product.description : '';
     $('p_price').value = product ? product.price : '';
+    $('p_cost_price').value = product ? (product.cost_price || 0) : 0;
     $('p_category').value = product ? product.category : 'Men';
     $('p_stock').value = product ? product.stock : 0;
     $('p_featured').value = product ? (product.featured ? 1 : 0) : 0;
@@ -546,6 +550,7 @@
       name: $('p_name').value.trim(),
       description: $('p_description').value.trim(),
       price: Number($('p_price').value),
+      cost_price: Number($('p_cost_price').value) || 0,
       category: $('p_category').value,
       stock: parseInt($('p_stock').value, 10) || 0,
       featured: $('p_featured').value === '1',
@@ -736,6 +741,53 @@
     `;
     $('orderModal').hidden = false;
   }
+
+
+
+  // ---------------- Admin team ----------------
+  let adminTeam = [];
+  async function loadAdminTeam() { try { const data = await api('/api/admin/team', { headers: authHeaders() }); adminTeam = data.admins || []; const el = $('adminTeamRows'); el.innerHTML = adminTeam.map((a) => `<div class="team-row"><span class="team-avatar">${escapeHtml(a.username.slice(0, 2).toUpperCase())}</span><span class="team-main"><b>${escapeHtml(a.username)} ${a.isCurrent ? '<em>you</em>' : ''}</b><small>${escapeHtml(a.role)} · ${Number(a.active) ? 'Active' : 'Inactive'}</small></span>${a.role !== 'owner' && !a.isCurrent ? `<button class="team-toggle" data-team-user="${escapeHtml(a.username)}" data-team-active="${Number(a.active) ? 0 : 1}">${Number(a.active) ? 'Pause' : 'Activate'}</button>` : '<span class="team-owner">Owner</span>'}</div>`).join('') || '<div class="expense-empty"><b>No team members yet.</b></div>'; } catch (err) { $('adminTeamRows').innerHTML = '<div class="loading-row">Could not load team.</div>'; } }
+  $('adminTeamForm').addEventListener('submit', async (e) => { e.preventDefault(); const err = $('teamError'); err.hidden = true; const btn = $('addAdminBtn'); btn.disabled = true; try { await api('/api/admin/team', { method: 'POST', headers: authHeaders(), body: JSON.stringify({ username: $('team_username').value, password: $('team_password').value, role: 'admin' }) }); $('adminTeamForm').reset(); toastMsg('Admin added. Share the temporary password securely.'); await loadAdminTeam(); } catch (e) { err.textContent = e.message; err.hidden = false; } finally { btn.disabled = false; } });
+  $('adminTeamRows').addEventListener('click', async (e) => { const btn = e.target.closest('[data-team-user]'); if (!btn) return; try { await api('/api/admin/team/' + encodeURIComponent(btn.dataset.teamUser), { method: 'PUT', headers: authHeaders(), body: JSON.stringify({ active: Number(btn.dataset.teamActive) }) }); toastMsg(Number(btn.dataset.teamActive) ? 'Admin activated.' : 'Admin paused.'); await loadAdminTeam(); } catch (err) { toastMsg(err.message); } });
+
+  // ---------------- Finance ----------------
+  let financeData = null;
+  const financeCategories = { inventory: 'Inventory', delivery: 'Delivery', marketing: 'Marketing', operations: 'Operations', salaries: 'Salaries', software: 'Software', taxes: 'Taxes', affiliate: 'Affiliate', other: 'Other' };
+  function financeMoney(n) { return formatKSh(Number(n || 0)); }
+  function financeRange() { return { from: $('financeFrom').value, to: $('financeTo').value }; }
+  function setDefaultFinanceDates() {
+    const now = new Date();
+    const first = new Date(now.getFullYear(), now.getMonth(), 1);
+    const iso = (d) => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+    if (!$('financeFrom').value) $('financeFrom').value = iso(first);
+    if (!$('financeTo').value) $('financeTo').value = iso(now);
+  }
+  function renderFinanceChart(months) {
+    const chart = $('financeChart'), labels = $('financeChartLabels');
+    if (!months || months.length === 0) { chart.innerHTML = '<div class="chart-empty">Select a range with activity to see the trend.</div>'; labels.innerHTML = ''; return; }
+    const values = months.map((m) => Number(m.sales) - Number(m.cogs) - Number(m.expenses));
+    const max = Math.max(1, ...values.map((v) => Math.abs(v)));
+    chart.innerHTML = months.map((m, i) => `<div class="chart-column"><span class="chart-value">${financeMoney(values[i])}</span><div class="chart-bar ${values[i] < 0 ? 'negative' : ''}" style="height:${Math.max(8, Math.round(Math.abs(values[i]) / max * 105))}px"></div></div>`).join('');
+    labels.innerHTML = months.map((m) => `<span>${escapeHtml(m.month.slice(5))}</span>`).join('');
+  }
+  function renderExpenses(expenses) {
+    const el = $('financeExpenseRows');
+    if (!expenses || expenses.length === 0) { el.innerHTML = '<div class="expense-empty"><span>◌</span><b>No expenses in this range.</b><small>Add costs like stock, delivery, marketing, or software to see real profit.</small></div>'; return; }
+    el.innerHTML = expenses.map((e) => `<div class="expense-row"><div class="expense-icon">${(financeCategories[e.category] || 'Other').slice(0,1)}</div><div class="expense-main"><b>${escapeHtml(e.description)}</b><small>${escapeHtml(financeCategories[e.category] || e.category)} · ${escapeHtml(e.payment_method || 'other')} · ${escapeHtml(String(e.expense_date).slice(0,10))}</small></div><strong>${financeMoney(e.amount)}</strong><button class="expense-edit" data-expense-edit="${e.id}" title="Edit expense">✎</button><button class="expense-delete" data-expense-delete="${e.id}" title="Delete expense">×</button></div>`).join('');
+  }
+  function renderFinance(data) {
+    financeData = data; const s = data.summary || {};
+    $('financeSales').textContent = financeMoney(s.sales); $('financeGrossProfit').textContent = financeMoney(s.grossProfit); $('financeOperatingExpenses').textContent = financeMoney(s.operatingExpenses + s.affiliateCommissions); $('financeNetProfit').textContent = financeMoney(s.netProfit); $('financeCashCollected').textContent = financeMoney(s.cashCollected); $('financeInventoryValue').textContent = financeMoney(s.inventoryValue);
+    $('financeGrossSub').textContent = `After ${financeMoney(s.cogs)} inventory cost`; $('financeNetSub').textContent = `${Number(s.margin || 0).toFixed(1)}% net margin`; $('financeMargin').textContent = `${Number(s.margin || 0).toFixed(1)}% margin`;
+    $('pnlSales').textContent = financeMoney(s.sales); $('pnlCogs').textContent = '− ' + financeMoney(s.cogs); $('pnlGross').textContent = financeMoney(s.grossProfit); $('pnlExpenses').textContent = '− ' + financeMoney(s.operatingExpenses); $('pnlAffiliate').textContent = '− ' + financeMoney(s.affiliateCommissions); $('pnlNet').textContent = financeMoney(s.netProfit);
+    $('cashCollectedRow').textContent = financeMoney(s.cashCollected); $('cashReceivablesRow').textContent = financeMoney(s.receivables); $('cashExpensesRow').textContent = financeMoney(s.operatingExpenses + s.affiliateCommissions); renderExpenses(data.expenses); renderFinanceChart(data.months);
+  }
+  async function loadFinance() { setDefaultFinanceDates(); try { const r = financeRange(); const data = await api('/api/admin/finance?from=' + encodeURIComponent(r.from) + '&to=' + encodeURIComponent(r.to), { headers: authHeaders() }); renderFinance(data); } catch (err) { toastMsg('Could not load financials: ' + err.message); } }
+  function openExpenseForm(expense) { $('expenseModalTitle').textContent = expense ? 'Edit expense' : 'Add expense'; $('expense_id').value = expense ? expense.id : ''; $('expense_date').value = expense ? String(expense.expense_date).slice(0,10) : new Date().toISOString().slice(0,10); $('expense_amount').value = expense ? expense.amount : ''; $('expense_description').value = expense ? expense.description : ''; $('expense_category').value = expense ? expense.category : 'other'; $('expense_payment_method').value = expense ? expense.payment_method : 'cash'; $('expense_notes').value = expense ? (expense.notes || '') : ''; $('expense_recurring').checked = !!(expense && expense.recurring); $('expenseModal').hidden = false; setTimeout(() => $('expense_description').focus(), 50); }
+  $('refreshFinanceBtn').addEventListener('click', loadFinance); $('financeFrom').addEventListener('change', loadFinance); $('financeTo').addEventListener('change', loadFinance); $('newExpenseBtn').addEventListener('click', () => openExpenseForm()); $('closeExpenseModal').addEventListener('click', () => ($('expenseModal').hidden = true)); $('cancelExpenseBtn').addEventListener('click', () => ($('expenseModal').hidden = true));
+  $('expenseForm').addEventListener('submit', async (e) => { e.preventDefault(); const id = $('expense_id').value; const body = { expense_date: $('expense_date').value, amount: Number($('expense_amount').value), description: $('expense_description').value.trim(), category: $('expense_category').value, payment_method: $('expense_payment_method').value, notes: $('expense_notes').value.trim() || null, recurring: $('expense_recurring').checked }; const btn = $('saveExpenseBtn'); btn.disabled = true; try { await api('/api/admin/expenses' + (id ? '/' + id : ''), { method: id ? 'PUT' : 'POST', headers: authHeaders(), body: JSON.stringify(body) }); $('expenseModal').hidden = true; toastMsg(id ? 'Expense updated.' : 'Expense recorded.'); await loadFinance(); } catch (err) { toastMsg(err.message); } finally { btn.disabled = false; } });
+  $('financeExpenseRows').addEventListener('click', async (e) => { const edit = e.target.closest('[data-expense-edit]'), del = e.target.closest('[data-expense-delete]'); if (edit) { const expense = (financeData.expenses || []).find((x) => x.id === Number(edit.dataset.expenseEdit)); if (expense) openExpenseForm(expense); } if (del) { const id = Number(del.dataset.expenseDelete); if (!confirm('Delete this expense?')) return; try { await api('/api/admin/expenses/' + id, { method: 'DELETE', headers: authHeaders() }); toastMsg('Expense deleted.'); await loadFinance(); } catch (err) { toastMsg(err.message); } } });
+  $('exportFinanceBtn').addEventListener('click', () => { if (!financeData) return; const rows = [['Date','Category','Description','Amount KSh','Payment method','Recurring']].concat((financeData.expenses || []).map((e) => [e.expense_date, financeCategories[e.category] || e.category, e.description, e.amount, e.payment_method, e.recurring ? 'Yes' : 'No'])); const csv = rows.map((r) => r.map((v) => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',')).join('\n'); const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' })); a.download = `saa-kenya-financials-${financeRange().from}-to-${financeRange().to}.csv`; a.click(); URL.revokeObjectURL(a.href); });
 
   // ---------------- Notifications ----------------
 

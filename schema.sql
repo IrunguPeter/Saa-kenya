@@ -8,8 +8,14 @@ CREATE TABLE IF NOT EXISTS admin_credentials (
   id            SERIAL PRIMARY KEY,
   username      VARCHAR(50) NOT NULL DEFAULT 'admin' UNIQUE,
   password_hash VARCHAR(255) NOT NULL,
+  role          VARCHAR(20) NOT NULL DEFAULT 'admin',
+  active        SMALLINT NOT NULL DEFAULT 1,
   updated_at    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+ALTER TABLE admin_credentials ADD COLUMN IF NOT EXISTS role VARCHAR(20) NOT NULL DEFAULT 'admin';
+ALTER TABLE admin_credentials ADD COLUMN IF NOT EXISTS active SMALLINT NOT NULL DEFAULT 1;
+UPDATE admin_credentials SET role = 'owner' WHERE username = 'admin' AND role = 'admin';
 
 -- ------------------------------------------------------------
 -- Products (watches priced KSh 500 - 5,000)
@@ -19,6 +25,7 @@ CREATE TABLE IF NOT EXISTS products (
   name        VARCHAR(120)   NOT NULL,
   description TEXT           NOT NULL,
   price       NUMERIC(10,2)  NOT NULL,
+  cost_price  NUMERIC(10,2)  NOT NULL DEFAULT 0.00,
   category    VARCHAR(50)    NOT NULL DEFAULT 'Men',
   image_url   VARCHAR(500)   DEFAULT NULL,
   stock       INT            NOT NULL DEFAULT 0,
@@ -85,9 +92,26 @@ CREATE TABLE IF NOT EXISTS order_items (
   product_name VARCHAR(120)  NOT NULL,
   price        NUMERIC(10,2) NOT NULL,
   quantity     INT           NOT NULL DEFAULT 1,
+  cost_price   NUMERIC(10,2) NOT NULL DEFAULT 0.00,
   CONSTRAINT fk_items_order
     FOREIGN KEY (order_id) REFERENCES orders(id)
     ON DELETE CASCADE
+);
+
+-- ------------------------------------------------------------
+-- Finance ledger (expenses entered by the owner)
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS expenses (
+  id              SERIAL PRIMARY KEY,
+  expense_date    DATE          NOT NULL DEFAULT CURRENT_DATE,
+  category        VARCHAR(40)   NOT NULL DEFAULT 'other',
+  description     VARCHAR(180)  NOT NULL,
+  amount          NUMERIC(12,2) NOT NULL CHECK (amount >= 0),
+  payment_method  VARCHAR(30)   NOT NULL DEFAULT 'cash',
+  recurring       SMALLINT      NOT NULL DEFAULT 0,
+  notes           TEXT          DEFAULT NULL,
+  created_at      TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at      TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 -- ------------------------------------------------------------

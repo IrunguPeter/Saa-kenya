@@ -130,19 +130,22 @@ function verifyPassword(password, hash) {
   });
 }
 
-async function getAdminPassword() {
+async function getAdminCredential(username = 'admin') {
   try {
     const [rows] = await db.query(
-      'SELECT password_hash FROM admin_credentials WHERE username = ?',
-      ['admin']
+      'SELECT username, password_hash, role, active FROM admin_credentials WHERE username = ? LIMIT 1',
+      [username]
     );
-    if (rows.length > 0) {
-      return rows[0].password_hash;
-    }
+    return rows[0] || null;
   } catch (err) {
-    console.error('Error fetching admin password from DB:', err.message);
+    console.error('Error fetching admin credential from DB:', err.message);
+    return null;
   }
-  return null;
+}
+
+async function getAdminPassword(username = 'admin') {
+  const credential = await getAdminCredential(username);
+  return credential ? credential.password_hash : null;
 }
 
 async function initializeAdminIfNeeded() {
@@ -154,8 +157,8 @@ async function initializeAdminIfNeeded() {
     if (rows.length === 0) {
       const hash = await hashPassword(ADMIN_PASSWORD);
       await db.query(
-        'INSERT INTO admin_credentials (username, password_hash) VALUES (?, ?)',
-        ['admin', hash]
+        'INSERT INTO admin_credentials (username, password_hash, role, active) VALUES (?, ?, ?, ?)',
+        ['admin', hash, 'owner', 1]
       );
       console.log('Initialized admin credentials from ADMIN_PASSWORD env var.');
     }
@@ -164,53 +167,70 @@ async function initializeAdminIfNeeded() {
   }
 }
 
-// Initialize admin credentials on startup
-initializeAdminIfNeeded().catch(err => console.error('Startup error:', err));
-
 const CATEGORIES = ['Men', 'Women', 'Kids', 'Smart', 'Unisex'];
+
+const FINANCE_SCHEMA_SQL = `
+  CREATE TABLE IF NOT EXISTS expenses (
+    id SERIAL PRIMARY KEY,
+    expense_date DATE NOT NULL DEFAULT CURRENT_DATE,
+    category VARCHAR(40) NOT NULL DEFAULT 'other',
+    description VARCHAR(180) NOT NULL,
+    amount NUMERIC(12,2) NOT NULL CHECK (amount >= 0),
+    payment_method VARCHAR(30) NOT NULL DEFAULT 'cash',
+    recurring SMALLINT NOT NULL DEFAULT 0,
+    notes TEXT DEFAULT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+  )`;
+
+async function ensureFinanceSchema() {
+  await db.query("ALTER TABLE admin_credentials ADD COLUMN IF NOT EXISTS role VARCHAR(20) NOT NULL DEFAULT 'admin'");
+  await db.query('ALTER TABLE admin_credentials ADD COLUMN IF NOT EXISTS active SMALLINT NOT NULL DEFAULT 1');
+  await db.query("UPDATE admin_credentials SET role = 'owner' WHERE username = 'admin' AND role = 'admin'");
+  await db.query('ALTER TABLE products ADD COLUMN IF NOT EXISTS cost_price NUMERIC(10,2) NOT NULL DEFAULT 0.00');
+  await db.query('ALTER TABLE order_items ADD COLUMN IF NOT EXISTS cost_price NUMERIC(10,2) NOT NULL DEFAULT 0.00');
+  await db.query(FINANCE_SCHEMA_SQL);
+}
+ensureFinanceSchema()
+  .then(() => initializeAdminIfNeeded())
+  .catch((err) => console.error('Startup schema setup error:', err.message));
 
 // ---------------- Auth helpers ----------------
 
-function makeToken(password) {
-  const payload = String(Date.now());
-  const sig = crypto
-    .createHmac('sha256', password)
-    .update(payload)
-    .digest('hex');
+function makeToken(password, username = 'admin') {
+  const payload = `${username}|${Date.now()}`;
+  const sig = crypto.createHmac('sha256', password).update(payload).digest('hex');
   return `${payload}.${sig}`;
+}
+
+function tokenUsername(token) {
+  if (typeof token !== 'string' || !token.includes('.')) return 'admin';
+  const payload = token.slice(0, token.lastIndexOf('.'));
+  return payload.split('|')[0] || 'admin';
 }
 
 function verifyToken(token, password) {
   if (typeof token !== 'string' || !token.includes('.')) return false;
-  const [payload, sig] = token.split('.');
-  const issuedAt = parseInt(payload, 10);
+  const dot = token.lastIndexOf('.');
+  const payload = token.slice(0, dot), sig = token.slice(dot + 1);
+  const issuedAt = parseInt(payload.split('|').pop(), 10);
   if (Number.isNaN(issuedAt) || Date.now() - issuedAt > TOKEN_TTL_MS) return false;
-  const expected = crypto
-    .createHmac('sha256', password)
-    .update(payload)
-    .digest('hex');
-  const a = Buffer.from(sig);
-  const b = Buffer.from(expected);
+  const expected = crypto.createHmac('sha256', password).update(payload).digest('hex');
+  const a = Buffer.from(sig), b = Buffer.from(expected);
   return a.length === b.length && crypto.timingSafeEqual(a, b);
 }
 
 function requireAdmin(req, res, next) {
-  const token =
-    (req.cookies && req.cookies.saa_admin_token) ||
-    (req.headers.authorization || '').replace(/^Bearer\s+/i, '');
-
+  const token = (req.cookies && req.cookies.saa_admin_token) || (req.headers.authorization || '').replace(/^Bearer\s+/i, '');
   (async () => {
     try {
-      // Try to get password from database first
-      let password = await getAdminPassword();
-      if (!password) {
-        password = ADMIN_PASSWORD;
-      }
-      
-      if (!verifyToken(token, password)) {
-        return res.status(401).json({ error: 'Unauthorised. Please log in.' });
-      }
+      const username = tokenUsername(token);
+      const credential = await getAdminCredential(username);
+      if (credential && Number(credential.active) !== 1) return res.status(403).json({ error: 'This admin account is inactive.' });
+      const password = credential ? credential.password_hash : username === 'admin' ? ADMIN_PASSWORD : null;
+      if (!password || !verifyToken(token, password)) return res.status(401).json({ error: 'Unauthorised. Please log in.' });
       req._adminPassword = password;
+      req.admin = { username: credential ? credential.username : 'admin', role: credential ? credential.role : 'owner' };
       next();
     } catch (err) {
       console.error('Auth middleware error:', err);
@@ -218,6 +238,12 @@ function requireAdmin(req, res, next) {
     }
   })();
 }
+
+function requireOwner(req, res, next) {
+  if (!req.admin || req.admin.role !== 'owner') return res.status(403).json({ error: 'Only the owner admin can manage the admin team.' });
+  next();
+}
+
 
 // ---------------- Affiliate auth helpers ----------------
 
@@ -494,7 +520,7 @@ app.post(
       // FOR UPDATE locks the rows for the duration of this transaction, so
       // concurrent orders cannot both read the same stock level and oversell.
       const [productRows] = await conn.query(
-        'SELECT id, name, price, stock FROM products WHERE id IN (?) FOR UPDATE',
+        'SELECT id, name, price, cost_price, stock FROM products WHERE id IN (?) FOR UPDATE',
         [ids]
       );
       const byId = new Map(productRows.map((p) => [p.id, p]));
@@ -517,7 +543,7 @@ app.post(
             status: 400,
           });
         }
-        lines.push({ product_id: p.id, product_name: p.name, price: p.price, quantity: qty });
+        lines.push({ product_id: p.id, product_name: p.name, price: p.price, cost_price: Number(p.cost_price) || 0, quantity: qty });
         total += p.price * qty;
       }
 
@@ -540,8 +566,8 @@ app.post(
 
       for (const line of lines) {
         await conn.query(
-          'INSERT INTO order_items (order_id, product_id, product_name, price, quantity) VALUES (?, ?, ?, ?, ?)',
-          [orderRes[0].id, line.product_id, line.product_name, line.price, line.quantity]
+          'INSERT INTO order_items (order_id, product_id, product_name, price, quantity, cost_price) VALUES (?, ?, ?, ?, ?, ?)',
+          [orderRes[0].id, line.product_id, line.product_name, line.price, line.quantity, line.cost_price]
         );
         await conn.query('UPDATE products SET stock = stock - ? WHERE id = ?', [
           line.quantity,
@@ -602,49 +628,22 @@ app.post(
 // ---------------- Admin: auth ----------------
 
 app.post('/api/admin/login', loginLimiter, asyncWrap(async (req, res) => {
-  const { password } = req.body || {};
-  if (!password) {
-    return res.status(401).json({ error: 'Password is required.' });
-  }
-
+  const { username = 'admin', password } = req.body || {};
+  const cleanUsername = String(username).trim().toLowerCase().slice(0, 50) || 'admin';
+  if (!password) return res.status(401).json({ error: 'Username and password are required.' });
   try {
-    // Try database password first
-    const dbPasswordHash = await getAdminPassword();
-
-    // Token HMAC key must be identical to what requireAdmin() uses when
-    // verifying (the stored hash). Signing with the raw password breaks
-    // auth as soon as a hash is present in the database.
-    const signingKey = dbPasswordHash || ADMIN_PASSWORD;
-
-    if (dbPasswordHash && (await verifyPassword(password, dbPasswordHash))) {
-      const token = makeToken(signingKey);
-      req._adminPassword = signingKey;
-      res.cookie('saa_admin_token', token, {
-        httpOnly: true,
-        sameSite: 'Strict',
-        secure: process.env.NODE_ENV === 'production',
-        maxAge: TOKEN_TTL_MS,
-      });
-      return res.json({ token, expiresIn: TOKEN_TTL_MS });
-    }
-
-    // Fall back to env var password for backward compatibility
-    if (password === ADMIN_PASSWORD) {
-      const token = makeToken(signingKey);
-      req._adminPassword = signingKey;
-      res.cookie('saa_admin_token', token, {
-        httpOnly: true,
-        sameSite: 'Strict',
-        secure: process.env.NODE_ENV === 'production',
-        maxAge: TOKEN_TTL_MS,
-      });
-      return res.json({ token, expiresIn: TOKEN_TTL_MS });
-    }
-
-    res.status(401).json({ error: 'Incorrect admin password.' });
+    const credential = await getAdminCredential(cleanUsername);
+    const hash = credential && Number(credential.active) === 1 ? credential.password_hash : null;
+    const validHash = hash ? await verifyPassword(password, hash) : false;
+    const validLegacy = cleanUsername === 'admin' && password === ADMIN_PASSWORD;
+    if (!validHash && !validLegacy) return res.status(401).json({ error: credential && Number(credential.active) !== 1 ? 'This admin account is inactive.' : 'Incorrect username or password.' });
+    const signingKey = hash || ADMIN_PASSWORD;
+    const token = makeToken(signingKey, cleanUsername);
+    res.cookie('saa_admin_token', token, { httpOnly: true, sameSite: 'Strict', secure: process.env.NODE_ENV === 'production', maxAge: TOKEN_TTL_MS });
+    return res.json({ token, expiresIn: TOKEN_TTL_MS, username: cleanUsername, role: credential ? credential.role : 'owner' });
   } catch (err) {
     console.error('Login error:', err);
-    res.status(401).json({ error: 'Incorrect admin password.' });
+    res.status(401).json({ error: 'Incorrect username or password.' });
   }
 }));
 
@@ -680,7 +679,7 @@ app.post(
 
     try {
       // Verify current password
-      const currentPasswordHash = await getAdminPassword();
+      const currentPasswordHash = await getAdminPassword(req.admin && req.admin.username);
       let isValid = false;
 
       if (currentPasswordHash) {
@@ -703,8 +702,8 @@ app.post(
       // Hash and store new password
       const newPasswordHash = await hashPassword(new_password);
       await db.query(
-        'INSERT INTO admin_credentials (username, password_hash) VALUES (?, ?) ON CONFLICT (username) DO UPDATE SET password_hash = EXCLUDED.password_hash',
-        ['admin', newPasswordHash]
+        'INSERT INTO admin_credentials (username, password_hash, role, active) VALUES (?, ?, ?, ?) ON CONFLICT (username) DO UPDATE SET password_hash = EXCLUDED.password_hash, updated_at = CURRENT_TIMESTAMP',
+        [req.admin && req.admin.username ? req.admin.username : 'admin', newPasswordHash, req.admin && req.admin.role ? req.admin.role : 'owner', 1]
       );
 
       res.json({ message: 'Password changed successfully. Please sign in again.' });
@@ -714,6 +713,32 @@ app.post(
     }
   })
 );
+
+
+// ---------------- Admin: team management ----------------
+app.get('/api/admin/team', requireAdmin, asyncWrap(async (req, res) => {
+  const [rows] = await db.query('SELECT username, role, active, created_at, updated_at FROM admin_credentials ORDER BY role DESC, username ASC');
+  res.json({ admins: rows.map((a) => ({ ...a, isCurrent: a.username === (req.admin && req.admin.username) })) });
+}));
+app.post('/api/admin/team', requireAdmin, requireOwner, asyncWrap(async (req, res) => {
+  const { username, password, role = 'admin' } = req.body || {};
+  const clean = String(username || '').trim().toLowerCase();
+  const strength = validatePasswordStrength(password);
+  if (!/^[a-z0-9._-]{3,50}$/.test(clean)) return res.status(400).json({ error: 'Username must be 3–50 letters, numbers, dots, underscores, or hyphens.' });
+  if (!strength.valid) return res.status(400).json({ error: strength.error });
+  if (!['admin', 'owner'].includes(role)) return res.status(400).json({ error: 'Invalid admin role.' });
+  const hash = await hashPassword(password);
+  try { await db.query('INSERT INTO admin_credentials (username, password_hash, role, active) VALUES (?, ?, ?, ?)', [clean, hash, role, 1]); res.status(201).json({ username: clean }); }
+  catch (err) { if (String(err.message).toLowerCase().includes('duplicate') || String(err.message).toLowerCase().includes('unique')) return res.status(409).json({ error: 'That username is already in use.' }); throw err; }
+}));
+app.put('/api/admin/team/:username', requireAdmin, requireOwner, asyncWrap(async (req, res) => {
+  const username = String(req.params.username).trim().toLowerCase();
+  const active = req.body && req.body.active ? 1 : 0;
+  if (username === req.admin.username) return res.status(400).json({ error: 'You cannot deactivate your own account.' });
+  const [result] = await db.query('UPDATE admin_credentials SET active = ?, updated_at = CURRENT_TIMESTAMP WHERE username = ?', [active, username]);
+  if (result.affectedRows === 0) return res.status(404).json({ error: 'Admin not found.' });
+  res.json({ ok: true });
+}));
 
 // ---------------- Admin: stats ----------------
 
@@ -730,6 +755,12 @@ app.get(
       "SELECT COALESCE(SUM(total),0) AS total FROM orders WHERE status != 'cancelled'"
     );
     const [lowStock] = await db.query('SELECT COUNT(*) AS n FROM products WHERE stock <= 5');
+    const [financeHeadline] = await db.query(`
+      SELECT
+        COALESCE(SUM(CASE WHEN o.status != 'cancelled' THEN o.total - o.delivery_fee ELSE 0 END), 0) AS sales,
+        COALESCE(SUM(CASE WHEN o.status != 'cancelled' THEN oi.cost_price * oi.quantity ELSE 0 END), 0) AS cogs
+      FROM orders o LEFT JOIN order_items oi ON oi.order_id = o.id
+    `);
 
     res.json({
       products: productCount[0].n,
@@ -737,30 +768,46 @@ app.get(
       pending: pendingCount[0].n,
       revenue: Number(revenue[0].total),
       lowStock: lowStock[0].n,
+      sales: Number(financeHeadline[0].sales),
+      cogs: Number(financeHeadline[0].cogs),
+      grossProfit: Number(financeHeadline[0].sales) - Number(financeHeadline[0].cogs),
     });
   })
 );
 
 // ---------------- Admin: products CRUD ----------------
 
+app.get(
+  '/api/admin/products',
+  requireAdmin,
+  asyncWrap(async (req, res) => {
+    const [rows] = await db.query(
+      'SELECT id, name, description, price, cost_price, category, image_url, stock, featured, created_at FROM products ORDER BY id DESC'
+    );
+    res.json({ products: rows });
+  })
+);
+
 app.post(
   '/api/admin/products',
   requireAdmin,
   asyncWrap(async (req, res) => {
-    const { name, description, price, category, image_url, stock, featured } = req.body || {};
+    const { name, description, price, cost_price, category, image_url, stock, featured } = req.body || {};
     if (!name || !description || price == null) {
       return res.status(400).json({ error: 'Name, description and price are required.' });
     }
     const p = Number(price);
+    const cp = Number(cost_price) || 0;
     if (Number.isNaN(p) || p < 500 || p > 5000) {
       return res.status(400).json({ error: 'Price must be between KSh 500 and KSh 5,000.' });
     }
     const cat = CATEGORIES.includes(category) ? category : 'Men';
+    if (cp < 0 || cp > p) return res.status(400).json({ error: 'Cost price must be between KSh 0 and the selling price.' });
     const [res2] = await db.query(
-      `INSERT INTO products (name, description, price, category, image_url, stock, featured)
-       VALUES (?, ?, ?, ?, ?, ?, ?)
+      `INSERT INTO products (name, description, price, cost_price, category, image_url, stock, featured)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
        RETURNING id`,
-      [name.trim(), description.trim(), p, cat, image_url || null, parseInt(stock, 10) || 0, featured ? 1 : 0]
+      [name.trim(), description.trim(), p, cp, cat, image_url || null, parseInt(stock, 10) || 0, featured ? 1 : 0]
     );
     res.status(201).json({ id: res2[0].id });
   })
@@ -770,21 +817,23 @@ app.put(
   '/api/admin/products/:id',
   requireAdmin,
   asyncWrap(async (req, res) => {
-    const { name, description, price, category, image_url, stock, featured } = req.body || {};
+    const { name, description, price, cost_price, category, image_url, stock, featured } = req.body || {};
     const id = Number(req.params.id);
     if (!name || !description || price == null) {
       return res.status(400).json({ error: 'Name, description and price are required.' });
     }
     const p = Number(price);
+    const cp = Number(cost_price) || 0;
     if (Number.isNaN(p) || p < 500 || p > 5000) {
       return res.status(400).json({ error: 'Price must be between KSh 500 and KSh 5,000.' });
     }
     const cat = CATEGORIES.includes(category) ? category : 'Men';
+    if (cp < 0 || cp > p) return res.status(400).json({ error: 'Cost price must be between KSh 0 and the selling price.' });
     const [result] = await db.query(
       `UPDATE products
-       SET name = ?, description = ?, price = ?, category = ?, image_url = ?, stock = ?, featured = ?
+       SET name = ?, description = ?, price = ?, cost_price = ?, category = ?, image_url = ?, stock = ?, featured = ?
        WHERE id = ?`,
-      [name.trim(), description.trim(), p, cat, image_url || null, parseInt(stock, 10) || 0, featured ? 1 : 0, id]
+      [name.trim(), description.trim(), p, cp, cat, image_url || null, parseInt(stock, 10) || 0, featured ? 1 : 0, id]
     );
     if (result.affectedRows === 0) {
       return res.status(404).json({ error: 'Product not found.' });
@@ -998,6 +1047,84 @@ app.put(
     res.json({ ok: true });
   })
 );
+
+
+// ---------------- Admin: finance ----------------
+const FINANCE_CATEGORIES = ['inventory', 'delivery', 'marketing', 'operations', 'salaries', 'software', 'taxes', 'affiliate', 'other'];
+const PAYMENT_METHODS = ['cash', 'mpesa', 'bank', 'card', 'other'];
+function financeDateRange(req) {
+  const from = /^\d{4}-\d{2}-\d{2}$/.test(String(req.query.from || '')) ? String(req.query.from) : '2000-01-01';
+  const toRaw = /^\d{4}-\d{2}-\d{2}$/.test(String(req.query.to || '')) ? String(req.query.to) : '2099-12-31';
+  return { from, to: toRaw, toExclusive: `${toRaw} 23:59:59` };
+}
+
+app.get('/api/admin/finance', requireAdmin, asyncWrap(async (req, res) => {
+  const { from, to, toExclusive } = financeDateRange(req);
+  const [summaryRows] = await db.query(`
+    SELECT
+      COALESCE(SUM(CASE WHEN o.status != 'cancelled' THEN o.total - o.delivery_fee ELSE 0 END), 0) AS sales,
+      COALESCE(SUM(CASE WHEN o.status != 'cancelled' THEN o.delivery_fee ELSE 0 END), 0) AS delivery_income,
+      COALESCE(SUM(CASE WHEN o.status = 'delivered' THEN o.total ELSE 0 END), 0) AS cash_collected,
+      COALESCE(SUM(CASE WHEN o.status != 'cancelled' AND o.status != 'delivered' THEN o.total ELSE 0 END), 0) AS receivables,
+      COALESCE(SUM(CASE WHEN o.status != 'cancelled' THEN COALESCE(oi.cost_price, p.cost_price, 0) * oi.quantity ELSE 0 END), 0) AS cogs
+    FROM orders o
+    LEFT JOIN order_items oi ON oi.order_id = o.id
+    LEFT JOIN products p ON p.id = oi.product_id
+    WHERE o.created_at >= ? AND o.created_at <= ?`, [from, toExclusive]);
+  const [expenseRows] = await db.query(
+    `SELECT id, expense_date, category, description, amount, payment_method, recurring, notes, created_at
+     FROM expenses WHERE expense_date >= ? AND expense_date <= ? ORDER BY expense_date DESC, id DESC`, [from, to]
+  );
+  const [affiliateRows] = await db.query(`
+    SELECT COALESCE(SUM(ac.amount), 0) AS amount
+    FROM affiliate_commissions ac JOIN orders o ON o.id = ac.order_id
+    WHERE ac.status IN ('pending', 'earned') AND o.status != 'cancelled' AND o.created_at >= ? AND o.created_at <= ?`, [from, toExclusive]);
+  const [monthlySales] = await db.query(`
+    SELECT TO_CHAR(DATE_TRUNC('month', o.created_at), 'YYYY-MM') AS month,
+      COALESCE(SUM(o.total - o.delivery_fee), 0) AS sales,
+      COALESCE(SUM(oi.cost_price * oi.quantity), 0) AS cogs
+    FROM orders o LEFT JOIN order_items oi ON oi.order_id = o.id
+    WHERE o.status != 'cancelled' AND o.created_at >= ? AND o.created_at <= ?
+    GROUP BY 1 ORDER BY 1`, [from, toExclusive]);
+  const [monthlyExpenses] = await db.query(`
+    SELECT TO_CHAR(DATE_TRUNC('month', expense_date), 'YYYY-MM') AS month, COALESCE(SUM(amount), 0) AS expenses
+    FROM expenses WHERE expense_date >= ? AND expense_date <= ? GROUP BY 1 ORDER BY 1`, [from, to]);
+  const s = summaryRows[0] || {};
+  const sales = Number(s.sales), cogs = Number(s.cogs), operatingExpenses = expenseRows.reduce((n, e) => n + Number(e.amount), 0);
+  const affiliate = Number(affiliateRows[0]?.amount || 0);
+  const grossProfit = sales - cogs;
+  const netProfit = grossProfit - operatingExpenses - affiliate;
+  const months = new Map();
+  for (const row of monthlySales) months.set(row.month, { month: row.month, sales: Number(row.sales), cogs: Number(row.cogs), expenses: 0 });
+  for (const row of monthlyExpenses) months.set(row.month, { ...(months.get(row.month) || { month: row.month, sales: 0, cogs: 0 }), expenses: Number(row.expenses) });
+  const [inventory] = await db.query('SELECT COALESCE(SUM(stock * cost_price), 0) AS value, COALESCE(SUM(stock * price), 0) AS retail_value FROM products');
+  res.json({ range: { from, to }, summary: { sales, deliveryIncome: Number(s.delivery_income), revenue: sales + Number(s.delivery_income), cashCollected: Number(s.cash_collected), receivables: Number(s.receivables), cogs, grossProfit, operatingExpenses, affiliateCommissions: affiliate, netProfit, margin: sales ? (netProfit / sales) * 100 : 0, inventoryValue: Number(inventory[0]?.value || 0), inventoryRetailValue: Number(inventory[0]?.retail_value || 0) }, expenses: expenseRows, months: Array.from(months.values()).sort((a, b) => a.month.localeCompare(b.month)) });
+}));
+
+app.post('/api/admin/expenses', requireAdmin, asyncWrap(async (req, res) => {
+  const { expense_date, category, description, amount, payment_method, recurring, notes } = req.body || {};
+  const value = Number(amount);
+  if (!description || !expense_date || !Number.isFinite(value) || value <= 0) return res.status(400).json({ error: 'Date, description and a positive amount are required.' });
+  if (!FINANCE_CATEGORIES.includes(category)) return res.status(400).json({ error: 'Choose a valid expense category.' });
+  const method = PAYMENT_METHODS.includes(payment_method) ? payment_method : 'other';
+  const [result] = await db.query(`INSERT INTO expenses (expense_date, category, description, amount, payment_method, recurring, notes) VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id`, [expense_date, category, String(description).trim().slice(0, 180), value, method, recurring ? 1 : 0, notes || null]);
+  res.status(201).json({ id: result[0].id });
+}));
+
+app.put('/api/admin/expenses/:id', requireAdmin, asyncWrap(async (req, res) => {
+  const { expense_date, category, description, amount, payment_method, recurring, notes } = req.body || {};
+  const value = Number(amount), id = Number(req.params.id);
+  if (!description || !expense_date || !Number.isFinite(value) || value <= 0 || !FINANCE_CATEGORIES.includes(category)) return res.status(400).json({ error: 'Please provide valid expense details.' });
+  const [result] = await db.query(`UPDATE expenses SET expense_date = ?, category = ?, description = ?, amount = ?, payment_method = ?, recurring = ?, notes = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, [expense_date, category, String(description).trim().slice(0, 180), value, PAYMENT_METHODS.includes(payment_method) ? payment_method : 'other', recurring ? 1 : 0, notes || null, id]);
+  if (result.affectedRows === 0) return res.status(404).json({ error: 'Expense not found.' });
+  res.json({ ok: true });
+}));
+
+app.delete('/api/admin/expenses/:id', requireAdmin, asyncWrap(async (req, res) => {
+  const [result] = await db.query('DELETE FROM expenses WHERE id = ?', [Number(req.params.id)]);
+  if (result.affectedRows === 0) return res.status(404).json({ error: 'Expense not found.' });
+  res.json({ ok: true });
+}));
 
 // ---------------- Affiliate program ----------------
 
