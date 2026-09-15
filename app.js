@@ -758,7 +758,7 @@ app.get(
     const [financeHeadline] = await db.query(`
       SELECT
         COALESCE(SUM(CASE WHEN o.status != 'cancelled' THEN o.total - o.delivery_fee ELSE 0 END), 0) AS sales,
-        COALESCE(SUM(CASE WHEN o.status != 'cancelled' THEN oi.cost_price * oi.quantity ELSE 0 END), 0) AS cogs
+        COALESCE(SUM(CASE WHEN o.status != 'cancelled' THEN COALESCE(NULLIF(oi.cost_price, 0), p.cost_price, 0) * oi.quantity ELSE 0 END), 0) AS cogs
       FROM orders o LEFT JOIN order_items oi ON oi.order_id = o.id
     `);
 
@@ -1066,7 +1066,7 @@ app.get('/api/admin/finance', requireAdmin, asyncWrap(async (req, res) => {
       COALESCE(SUM(CASE WHEN o.status != 'cancelled' THEN o.delivery_fee ELSE 0 END), 0) AS delivery_income,
       COALESCE(SUM(CASE WHEN o.status = 'delivered' THEN o.total ELSE 0 END), 0) AS cash_collected,
       COALESCE(SUM(CASE WHEN o.status != 'cancelled' AND o.status != 'delivered' THEN o.total ELSE 0 END), 0) AS receivables,
-      COALESCE(SUM(CASE WHEN o.status != 'cancelled' THEN COALESCE(oi.cost_price, p.cost_price, 0) * oi.quantity ELSE 0 END), 0) AS cogs
+        COALESCE(SUM(CASE WHEN o.status != 'cancelled' THEN COALESCE(NULLIF(oi.cost_price, 0), p.cost_price, 0) * oi.quantity ELSE 0 END), 0) AS cogs
     FROM orders o
     LEFT JOIN order_items oi ON oi.order_id = o.id
     LEFT JOIN products p ON p.id = oi.product_id
@@ -1082,7 +1082,7 @@ app.get('/api/admin/finance', requireAdmin, asyncWrap(async (req, res) => {
   const [monthlySales] = await db.query(`
     SELECT TO_CHAR(DATE_TRUNC('month', o.created_at), 'YYYY-MM') AS month,
       COALESCE(SUM(o.total - o.delivery_fee), 0) AS sales,
-      COALESCE(SUM(oi.cost_price * oi.quantity), 0) AS cogs
+      COALESCE(SUM(COALESCE(NULLIF(oi.cost_price, 0), p.cost_price, 0) * oi.quantity), 0) AS cogs
     FROM orders o LEFT JOIN order_items oi ON oi.order_id = o.id
     WHERE o.status != 'cancelled' AND o.created_at >= ? AND o.created_at <= ?
     GROUP BY 1 ORDER BY 1`, [from, toExclusive]);
